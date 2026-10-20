@@ -12,11 +12,19 @@ struct CallAssistantApp: App {
     init() {
         let session = LiveSession()
         _session = State(initialValue: session)
+        let log = Logger(subsystem: "com.jaceg.callassistant", category: "app")
         answerNowKey = GlobalHotKey {
-            if session.canAnswerNow { session.answers.answerNow(transcript: session.store) }
+            if session.canAnswerNow {
+                log.info("⌃⌥A pressed: answering")
+                session.answers.answerNow(transcript: session.store)
+            } else {
+                log.info("⌃⌥A pressed: nothing to answer yet")
+            }
         }
         if answerNowKey == nil {
-            Logger(subsystem: "com.jaceg.callassistant", category: "app").error("couldn't register ⌃⌥A; another app may hold it")
+            log.error("couldn't register ⌃⌥A; another app may hold it")
+        } else {
+            log.info("⌃⌥A registered")
         }
     }
 
