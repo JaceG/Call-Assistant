@@ -266,12 +266,18 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - The system-audio level is unchanged compared with no processing.
 - **Checkpoint:** the research result (approach, effort, license) goes to Jace before integration.
 
+- **Result (2026-10-20):**
+  - **Build:** WebRTC v2.1 builds for macOS 26 with meson + ninja and links through `CEchoCanceller`.
+  - **Tests:** a pure echo comes out 24.2 dB quieter; with nothing playing, the mic level changes by -0.05 dB.
+  - **Live run** (speakers, canceller on, duplicate filter off, Apple voice processing off): no echoed questions in Me, and both of Jace's spoken answers came through.
+  - **Volume:** the call level wasn't measured in this run. The canceller only processes the mic copy and doesn't use voice processing, so it can't duck the call.
+  - **Defaults now:** canceller on, filter on as a backup, Apple voice processing off. Both are harmless with headphones, so Task 6 needs no echo toggle.
+
 ### Task 6: Transcript window ⛳ CHECKPOINT (real call)
 - **Intent:** the UI for Phase 1. Run `ui-consistency:finding-patterns` first; this is the project's first page, so expect platform conventions (HIG) to settle most choices, and say so. Then build the window, then `ui-consistency:verifying` by a separate agent.
 - **Files:** `mac/Sources/CallAssistant/TranscriptWindow.swift` and `CallAssistantApp.swift`.
 - **What it shows:**
   - A Start/Stop button and a status line: "Downloading speech model 42%", "Listening", or the error text.
-  - An echo-cancellation toggle labelled for speaker use. It's disabled while listening.
   - The utterance list: time, speaker ("Me" / "Them"), text. It scrolls to the newest line unless the user has scrolled up.
   - Each speaker's current partial line, in a secondary style.
   - "Open Sessions Folder" (Finder) and "Copy Transcript".

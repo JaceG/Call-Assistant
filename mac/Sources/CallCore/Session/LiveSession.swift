@@ -21,9 +21,14 @@ public final class LiveSession {
     public let store = TranscriptStore()
     /// The current (or last) call's transcript file.
     public private(set) var sessionFile: URL?
-    /// Voice processing on the mic, so it doesn't pick up the other side from
-    /// the speakers. Not needed with headphones. Applies from the next start.
-    public var echoCancellation = false
+    /// WebRTC's echo canceller: removes the speakers' sound from the mic, using
+    /// the system audio as the reference, without turning the call down.
+    /// Applies from the next start.
+    public var cancelEcho = true
+    /// Apple's voice processing on the mic, the other way to cancel echo. It
+    /// turns other audio down (measured: the call to about a third), so it's
+    /// off. Applies from the next start.
+    public var appleVoiceProcessing = false
     /// Drop or trim my lines that repeat what they just said (the mic hearing
     /// the speakers). Text only, so it costs no volume.
     public var filterEcho = true
@@ -87,7 +92,7 @@ public final class LiveSession {
 
         let mic = MicCapture()
         let system = SystemAudioCapture()
-        let micAudio = mic.bufferStream(echoCancellation: echoCancellation)
+        let micAudio = mic.bufferStream(echoCancellation: appleVoiceProcessing)
         let systemAudio: AsyncStream<AVAudioPCMBuffer>
         do {
             systemAudio = try await system.bufferStream().systemAudio
@@ -99,9 +104,18 @@ public final class LiveSession {
         self.mic = mic
         self.system = system
 
+        var meAudio = micAudio
+        var themAudio = systemAudio
+        if cancelEcho {
+            if let canceller = WebRTCEchoCanceller() {
+                (meAudio, themAudio) = Self.cancellingEcho(mic: micAudio, system: systemAudio, with: canceller)
+            } else {
+                Log.session.error("WebRTC echo canceller couldn't be set up; continuing without it")
+            }
+        }
         channels = [
-            channel(.me, transcriber: micTranscriber, audio: micAudio),
-            channel(.them, transcriber: systemTranscriber, audio: systemAudio),
+            channel(.me, transcriber: micTranscriber, audio: meAudio),
+            channel(.them, transcriber: systemTranscriber, audio: themAudio),
         ]
         releaser = Task { [weak self] in
             while !Task.isCancelled {
@@ -132,6 +146,36 @@ public final class LiveSession {
         writer?.close()
         writer = nil
         state = .idle
+    }
+
+    /// Passes the system audio to the canceller as the reference (and on, as
+    /// it was, to the Them transcriber), and the mic through the canceller.
+    /// Each stream ends when its source ends.
+    private static func cancellingEcho(
+        mic: AsyncStream<AVAudioPCMBuffer>,
+        system: AsyncStream<AVAudioPCMBuffer>,
+        with canceller: WebRTCEchoCanceller
+    ) -> (me: AsyncStream<AVAudioPCMBuffer>, them: AsyncStream<AVAudioPCMBuffer>) {
+        let (me, meInput) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+        let (them, themInput) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+        let mic = UncheckedSendable(mic)
+        let system = UncheckedSendable(system)
+        let meOut = UncheckedSendable(meInput)
+        let themOut = UncheckedSendable(themInput)
+        Task.detached {
+            for await buffer in system.value {
+                canceller.addFarEnd(buffer)
+                themOut.value.yield(buffer)
+            }
+            themOut.value.finish()
+        }
+        Task.detached {
+            for await buffer in mic.value {
+                if let cleaned = canceller.process(buffer) { meOut.value.yield(cleaned) }
+            }
+            meOut.value.finish()
+        }
+        return (me, them)
     }
 
     /// Transcribes one side of the call on a background task.

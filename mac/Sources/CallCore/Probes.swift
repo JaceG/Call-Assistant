@@ -21,11 +21,12 @@ public enum Probes {
         let value = arguments.drop { $0 != flag }.dropFirst().first
         switch flag {
         case "--probe-audio":
-            return await audio(seconds: value.flatMap(Int.init) ?? 15, echoCancellation: arguments.contains("--aec"))
+            return await audio(seconds: value.flatMap(Int.init) ?? 15, echoCancellation: arguments.contains("--apple-voice-processing"))
         case "--probe-live":
             return await live(
                 seconds: value.flatMap(Int.init) ?? 30,
-                echoCancellation: arguments.contains("--aec"),
+                cancelEcho: !arguments.contains("--no-echo-canceller"),
+                appleVoiceProcessing: arguments.contains("--apple-voice-processing"),
                 filterEcho: !arguments.contains("--no-echo-filter")
             )
         case "--probe-transcribe":
@@ -165,11 +166,12 @@ extension Probes {
     /// transcribed and saved. Prints each finished utterance as it arrives.
     /// Returns 0 if both sides produced at least one.
     @MainActor
-    static func live(seconds: Int, echoCancellation: Bool = false, filterEcho: Bool = true) async -> Int32 {
+    static func live(seconds: Int, cancelEcho: Bool, appleVoiceProcessing: Bool, filterEcho: Bool) async -> Int32 {
         let session = LiveSession()
-        session.echoCancellation = echoCancellation
+        session.cancelEcho = cancelEcho
+        session.appleVoiceProcessing = appleVoiceProcessing
         session.filterEcho = filterEcho
-        print("echo cancellation: \(echoCancellation ? "on" : "off"), echo filter: \(filterEcho ? "on" : "off")")
+        print("echo canceller (WebRTC): \(cancelEcho ? "on" : "off"), Apple voice processing: \(appleVoiceProcessing ? "on" : "off"), echo filter: \(filterEcho ? "on" : "off")")
         let clock = { (date: Date) in date.clockTime(in: .current) }
         await session.start()
         if case .failed(let message) = session.state {
