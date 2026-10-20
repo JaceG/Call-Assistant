@@ -10,8 +10,8 @@ struct FilesPopover: View {
     let add: () -> Void
     let remove: (URL) -> Void
 
-    /// The popover's width, as wide as Call Notes' editor (points).
-    static let width: CGFloat = 320
+    /// The content's width, as wide as Call Notes' editor (points).
+    static let width = TranscriptWindow.notesSize.width
     /// The most the picks and skipped lists grow before they scroll (points).
     private static let listHeight: CGFloat = 160
 
@@ -38,8 +38,9 @@ struct FilesPopover: View {
 
             Button("Add Folders or Files…", action: add)
         }
-        .padding()
+        // Width, then padding, as Call Notes does, so both popovers are the same size.
         .frame(width: Self.width)
+        .padding()
     }
 
     @ViewBuilder private var summary: some View {
@@ -76,7 +77,7 @@ struct FilesPopover: View {
     /// How many files Claude has and how it will use them.
     static func summary(of files: CallFiles) -> String {
         let count = files.files.count
-        guard count > 0 else { return "Nothing readable in these picks." }
+        guard count > 0 else { return "Nothing readable in these folders and files." }
         let counted = count == 1 ? "1 file" : "\(count.formatted()) files"
         switch files.mode {
         case .whole:

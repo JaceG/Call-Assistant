@@ -36,7 +36,7 @@ struct TranscriptWindow: View {
     /// How close to the bottom still counts as "at the bottom" (points).
     private static let bottomTolerance: CGFloat = 24
     /// The Call Notes editor's size (points).
-    private static let notesSize = CGSize(width: 320, height: 180)
+    static let notesSize = CGSize(width: 320, height: 180)
 
     var body: some View {
         // The split view ignores safe-area insets, so the status bar sits
@@ -225,7 +225,7 @@ struct TranscriptWindow: View {
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
         panel.prompt = "Add"
-        panel.message = "Choose folders and files Claude can use on calls."
+        panel.message = "Choose folders and files Claude can use on this call."
         // Modal, so it shows above this window when it floats.
         guard panel.runModal() == .OK else { return }
         let paths = picks.map(\.path) + panel.urls.map(\.path).filter { !picks.map(\.path).contains($0) }
