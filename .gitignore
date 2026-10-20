@@ -16,6 +16,51 @@ __pycache__/
 *.pyc
 .venv/
 
-# Secrets
+# ---- Sensitive: never commit ----
+
+# API keys and local config
 .env
-*.env.local
+.env.*
+!.env.example
+*.local.xcconfig
+Secrets.xcconfig
+credentials.json
+
+# Signing, certificates and private keys
+*.pem
+*.key
+*.p8
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+
+# AWS / infrastructure state
+.aws/
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+
+# Call data: recordings, transcripts, session logs
+recordings/
+transcripts/
+sessions/
+*.wav
+*.m4a
+*.caf
+
+# Playbooks with client or personal details (shareable examples go in playbooks/examples/)
+playbooks/private/
+
+# Codebase index data (contains code from indexed repos)
+index-service/data/
+*.lance/
+.lancedb/
+
+# Device pairing tokens
+pairing/
+*.pairing.json
+
+# Personal agent notes (not for the public repo)
+private/
