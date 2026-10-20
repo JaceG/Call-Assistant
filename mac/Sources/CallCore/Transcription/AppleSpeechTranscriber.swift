@@ -27,7 +27,7 @@ public final class AppleSpeechTranscriber: LiveTranscriber, @unchecked Sendable 
         let status = await AssetInventory.status(forModules: [module])
         Log.transcription.info("speech model for \(supported.identifier, privacy: .public): \(String(describing: status), privacy: .public)")
         if status != .installed, let request = try await AssetInventory.assetInstallationRequest(supporting: [module]) {
-            onStatus("Downloading the speech model (\(supported.identifier))…")
+            onStatus("Downloading the speech model…")
             let observation = request.progress.observe(\.fractionCompleted, options: [.initial, .new]) { progress, _ in
                 onProgress(progress.fractionCompleted)
             }
@@ -35,7 +35,6 @@ public final class AppleSpeechTranscriber: LiveTranscriber, @unchecked Sendable 
             try await request.downloadAndInstall()
         }
         locale = supported
-        onStatus("Speech model ready (\(supported.identifier))")
     }
 
     public func run(

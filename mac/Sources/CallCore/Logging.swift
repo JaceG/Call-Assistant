@@ -11,7 +11,7 @@ enum Log {
     static let session = Logger(subsystem: subsystem, category: "session")
 }
 
-/// The app version, for logs and the window title.
+/// The app version.
 public enum AppInfo {
     public static let version = "0.1.0"
 }

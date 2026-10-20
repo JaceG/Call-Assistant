@@ -7,7 +7,11 @@ import SwiftUI
 struct TranscriptWindow: View {
     let session: LiveSession
 
-    @AppStorage("keepOnTop") private var keepOnTop = true
+    /// Keep on Top's stored setting, shared with the app's window level.
+    static let keepOnTopKey = "keepOnTop"
+    static let keepOnTopByDefault = true
+
+    @AppStorage(keepOnTopKey) private var keepOnTop = keepOnTopByDefault
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     /// False once the user scrolls up, so new lines don't pull them back down.
     @State private var followsNewLines = true
@@ -18,7 +22,10 @@ struct TranscriptWindow: View {
     var body: some View {
         transcript
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                StatusBar(state: session.state)
+                VStack(spacing: 0) {
+                    Divider()
+                    StatusBar(state: session.state)
+                }
             }
             .toolbar { toolbar }
             .frame(minWidth: 420, minHeight: 300)
@@ -29,7 +36,8 @@ struct TranscriptWindow: View {
     @ViewBuilder private var transcript: some View {
         let store = session.store
         if store.utterances.isEmpty && store.partial.isEmpty {
-            Text(isListening ? "Listening. Lines appear as people speak." : "Press Start when your call begins.")
+            // While preparing or stopping, the status bar says what's happening.
+            Text(isListening ? "Listening. Lines appear as people speak." : isBusy ? "" : "Press Start when your call begins.")
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
@@ -88,7 +96,7 @@ struct TranscriptWindow: View {
             Button(action: openSessionsFolder) {
                 Label("Open Sessions Folder", systemImage: "folder")
             }
-            .help("Show saved transcripts in Finder")
+            .help("Open the Sessions folder, where each call's transcript is saved")
 
             Toggle(isOn: $keepOnTop) {
                 Label("Keep on Top", systemImage: keepOnTop ? "pin.fill" : "pin")
@@ -149,6 +157,8 @@ private struct TranscriptLine: View {
                 .foregroundStyle(inProgress ? .secondary : .primary)
                 .textSelection(.enabled)
         }
+        // One line reads as one item: "10:41:03 Them Can you walk me through…".
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -169,6 +179,7 @@ private struct StatusBar: View {
                 Image(systemName: "circle.fill")
                     .foregroundStyle(.red)
                     .imageScale(.small)
+                    .accessibilityHidden(true)
                 Text("Listening")
             case .stopping:
                 Text("Stopping…")

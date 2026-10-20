@@ -289,22 +289,27 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
     - Copy Transcript (`doc.on.doc`), disabled while there are no lines.
     - Open Sessions Folder (`folder`).
   - [ ] **Transcript:** `ScrollView` + `LazyVStack(alignment: .leading)` of transcript lines, newest at the bottom. It follows new lines unless the user has scrolled up. (As agreed.)
-  - [ ] **Transcript line:** a new view in `TranscriptWindow.swift` (agreed), used for finished and in-progress lines.
+  - [ ] **Transcript line:** a new view in `TranscriptWindow.swift` (agreed), used for finished and in-progress lines. It reads as one VoiceOver item.
     - Time: `.caption.monospacedDigit()`, `.secondary`.
     - Speaker: semibold body, Them in `.tint`, Me in `.secondary`.
     - Text: `.body`, selectable.
     - (System styles.)
   - [ ] **In-progress line, one per side:** the same view with no time, text `.secondary` and italic. (As agreed.)
-  - [ ] **Empty states:** "Press Start when your call begins." before Start, and "Listening. Lines appear as people speak." while listening with no lines. Centred, `.secondary`. (As agreed; new copy.)
-  - [ ] **Status bar:** a new view in the same file (agreed), at the bottom, `.callout`.
+  - [ ] **Empty states:** "Press Start when your call begins." when idle or after a failure, and "Listening. Lines appear as people speak." while listening with no lines. Blank while preparing or stopping, because the status bar says what's happening (added after the first check). Centred, `.secondary`. (As agreed; new copy.)
+  - [ ] **Status bar:** a new view in the same file (agreed), at the bottom under a `Divider`, `.callout`.
     - "Ready"
     - "Checking the speech model…"
-    - "Downloading the speech model" with a `ProgressView(value:)`
+    - "Downloading the speech model…" with a `ProgressView(value:)`. That's the only download wording, with no locale shown and no "ready" message (fixed after the first check).
+    - The red dot is hidden from VoiceOver.
     - "Listening" with a red dot
     - "Stopping…"
     - On failure, the error text in `.red`
     - (System colours.)
-  - [ ] **Spacing:** SwiftUI's defaults (`.padding()`, default stack spacing). No numeric literals besides the window minimum. (Scale not derivable.)
+  - [ ] **Spacing:** SwiftUI's defaults (`.padding()`, default stack spacing). The only numbers allowed:
+    - the window minimum
+    - `0` where a default gap is removed so the status bar sits flush (`safeAreaInset` spacing, `Spacer(minLength:)`, the divider stack)
+    - the named scroll constant `bottomTolerance`, which is behaviour rather than spacing
+    - (Scale not derivable; refined after the first check.)
   - [ ] **What the user sees happen:**
     - Start disables itself while preparing.
     - A failure leaves Start enabled.

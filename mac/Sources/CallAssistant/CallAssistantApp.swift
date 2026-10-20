@@ -4,7 +4,7 @@ import SwiftUI
 struct CallAssistantApp: App {
     @State private var session = LiveSession()
     /// Floats the window above the call app; toggled from the window's toolbar.
-    @AppStorage("keepOnTop") private var keepOnTop = true
+    @AppStorage(TranscriptWindow.keepOnTopKey) private var keepOnTop = TranscriptWindow.keepOnTopByDefault
 
     var body: some Scene {
         Window("Call Assistant", id: "transcript") {
