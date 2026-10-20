@@ -1,14 +1,14 @@
 # Call Assistant
 
-A self-hosted call assistant for the Mac (an iPhone app comes later). It
-listens to both sides of a call, transcribes them live on the Mac, answers
-the other person's questions with Claude as the call goes, and saves each
-call as a Markdown transcript. A phone companion app and codebase lookups are
-planned next.
+A self-hosted call assistant for the Mac. It listens to both sides of a
+call, transcribes them live on the Mac, answers the other person's questions
+with Claude as the call goes (using folders and files you pick, such as a
+project's code or your resume), and saves each call as a Markdown transcript.
 
 **Status:**
 - **Phase 1**, Mac audio capture and live transcript, is built. See [docs/plans/2026-10-20-phase-1-mac-core.md](docs/plans/2026-10-20-phase-1-mac-core.md) for its plan, what was measured, and the phases after it.
 - **Phase 2**, Claude answers and playbooks, is built. See [docs/plans/2026-10-20-phase-2-answers.md](docs/plans/2026-10-20-phase-2-answers.md).
+- **Phase 3**, folders and files for a call, is built. See [docs/plans/2026-10-20-phase-3-files.md](docs/plans/2026-10-20-phase-3-files.md). It's the last phase: the iPhone app, remote access, screen capture and headless mode were dropped.
 
 ## What it does now
 
@@ -35,6 +35,7 @@ planned next.
 - **Playbooks and call notes.** These are instructions Claude follows in every answer:
   - **A playbook** is a Markdown file per kind of call (an interview, a client check-in), picked from the **Playbook** menu.
   - **Call Notes** are for this one call (who it's with, what it's about).
+- **Files** (the books button): folders and files Claude uses in its answers, such as a project's code for a technical call or your resume for an interview. See [Files](#files).
 
 ## Requirements
 
@@ -70,12 +71,13 @@ security add-generic-password -U -s com.jaceg.callassistant -a anthropic-api-key
 
 It asks for the key twice and doesn't show it. The first time the app reads it, macOS asks whether Call Assistant may use it. Click **Always Allow**.
 
-**What gets sent:** for each answer, the call's transcript so far, the playbook and the call notes go to Anthropic's API. Audio never leaves the Mac.
+**What gets sent:** for each answer, the call's transcript so far, the playbook, the call notes and the picked files go to Anthropic's API (all of their text, or only the parts Claude searches for and reads; see [Files](#files)). Audio never leaves the Mac.
 
 **Cost** (an estimate, at Sonnet 5.5's list price of $2 / $10 per million input / output tokens):
 - Well under 1 cent for an answer early in a call.
 - Late in an hour-long call, up to about 3–4 cents for an answer that can't use the cache.
 - Prompt caching re-reads earlier parts of the transcript at a tenth of the price, which brings a late answer to about 1 cent. In a test with a 120-line transcript, every answer after the first read 5,289 cached tokens.
+- Picked files add to this; [Files](#files) has the figures.
 
 ### Playbooks
 
@@ -90,6 +92,30 @@ Keep answers to two sentences I can say out loud, then up to three bullets.
 ```
 
 Write only instructions in the file: Claude reads all of it. New or edited files show up in the menu when you switch back to the app.
+
+### Files
+
+Click the **Files** button (books) and **Add Folders or Files…**. Your picks stay until you remove them, for every call, like the playbook. They're read again when you press Start, so edits since you picked them count.
+
+**What's read:**
+- Text and code files, and the text of PDFs and Word (`.docx`, `.doc`), `.rtf` and `.odt` documents.
+- In a folder that's a git repository, the files git lists, so `.gitignore` applies. Elsewhere, everything except hidden files and folders like `node_modules`, `build`, `dist`, `.build`, `DerivedData` and `Pods`.
+
+**What's skipped,** listed under "skipped" in the popover with the reason:
+- **Secrets files are never read or sent, even if you pick one:** `.env*`, `.npmrc`, `.netrc`, `.pypirc`, keys and certificates (`.pem`, `.key`, `.p12`, `.p8`…), and SSH keys (`id_rsa`…).
+- Lockfiles, minified or bundled files, source maps, images, audio, video, archives and other binaries, and any file with over 1 MB of text.
+
+**How Claude uses them:** the popover says which way it is.
+- **Up to about 150,000 tokens** (about 375 KB of text, a mid-size project): Claude gets all of it with every answer. It's cached for an hour, and the cache is filled when you press Start, so answers start about as fast as without files.
+  - Measured with this repository (143,219 tokens): about 1 s to the first words, 2 s to fill the cache.
+- **More than that:** Claude gets the list of files, and searches and reads them when a question needs it. The answer shows what it's looking at ("Searching the files for "terminal"…").
+  - Measured with a 925-file website project: the answer appears about 3.5–4.5 s after asking, all at once rather than word by word. Questions that don't need the files still answer as fast as usual.
+
+**Cost** (estimates from the measured token counts, at Sonnet 5.5's prices):
+- **Whole, 143,000 tokens:** about 57 cents to fill the cache at the start of a call (once an hour), then about 3 cents per answer. Smaller picks cost proportionally less.
+- **Searched:** about 15 cents to cache the file list for a 925-file project, then about 3 cents for an answer that looks something up.
+
+macOS may ask whether Call Assistant can use files in Documents, Desktop or Downloads the first time it reads picks from those folders.
 
 ## Developer checks
 
@@ -111,7 +137,10 @@ open mac/dist/CallAssistant.app --stdout /tmp/ca.log --stderr /tmp/ca.log --args
   - `--notes "<text>"`
   - `--effort low|medium|high`
   - `--thinking-off`
+  - `--files <folder or file>` (repeatable): answer with these picked, as a call would.
+  - `--warm`: fill the cache first and print how long that took.
 - `--probe-detect <call.md>`: replays a saved call and lists the lines Auto-Answer would answer. It makes no API call.
+- `--probe-files <folder or file>...`: reads picks as a call would and prints the file count, the size, whole or search, the largest files and what was skipped. It makes no API call.
 
 Unit tests: `cd mac && swift test`.
 

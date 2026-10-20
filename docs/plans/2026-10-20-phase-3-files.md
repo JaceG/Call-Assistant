@@ -163,3 +163,46 @@ README.md                                         Files section; phone app and A
 ## Checkpoint
 
 After Task 5, show Jace the window with files picked and an answer that came from them.
+
+## Results (2026-10-20)
+
+**Task 1, reading:**
+- This repository came to 57 files and 355 KB of text, with nothing skipped.
+- Jace-Portfolio came to 925 files and 4.4 MB.
+  - Skipped: 390 binaries, 13 generated files, and 2 files over 1 MB.
+  - The generated files are its lockfile, plus hashed bundles caught by a check added for very long lines.
+- Reading takes 0.01–0.09 s.
+
+**Task 2, whole mode:**
+- The token estimate was wrong at first.
+  - It assumed 3 bytes per token and predicted 118k tokens for this repository.
+  - The API counted **143,219 tokens**, about 2.5 bytes per token. The estimate now uses 0.4 tokens per byte.
+- Times to the first text:
+
+  | Files | Cache | First text |
+  |---|---|---|
+  | This repo (143k tokens) | Cold | 4.4 s |
+  | This repo (143k tokens) | Cached | 0.9–1.2 s, one run 3.3 s |
+  | `mac/Sources` (72,718 tokens) | Warmed first (warming took 1.9 s) | 0.6–0.7 s |
+
+- The answers named the real mechanisms: WebRTC AEC3, Apple's voice processing ducking the call to about a third, and the text filter.
+
+**Task 3, look-up mode:**
+- Tested on Jace-Portfolio (about 1.8M tokens estimated).
+- Asked "how did you build the terminal on your portfolio site?":
+  - Claude read `src/components/terminal/index.js` and searched for "terminal" in one round.
+  - The answers were correct, with a custom React component, about 40 commands, Matrix rain and live GitHub activity.
+- First text came at 3.6–5.4 s.
+  - **After a tool round, the text arrives all at once at the end rather than streaming.** That's measured.
+  - My guess at the cause is the API holding text that might come before another tool call.
+- A question that needs no files still streams, with first text at 0.9–1.4 s.
+
+**Prompt fix:** after a search, the quick answer ran to two or three sentences. Adding "starting with one short sentence he can say right away" to the look-up text gave one sentence in 3 of 3 runs.
+
+**Task 5, window:**
+- I drove the window myself with this repository picked. It had grown to 61 files, past the budget, so it showed look-up.
+- I typed a question about echo.
+- The answer showed "Searching the files for "echo"…" and then answered from the code.
+- **Not tested:**
+  - **The open panel:** it runs in a separate macOS process that I'm not allowed to click. The picks were stored with `defaults write` instead.
+  - **Warming at Start inside the window:** it's the same `warm()` the probe measured.
