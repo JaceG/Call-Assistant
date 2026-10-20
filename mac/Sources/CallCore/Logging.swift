@@ -7,7 +7,7 @@ enum Log {
 
     static let systemAudio = Logger(subsystem: subsystem, category: "system-audio")
     static let mic = Logger(subsystem: subsystem, category: "mic")
-    static let streaming = Logger(subsystem: subsystem, category: "streaming")
+    static let transcription = Logger(subsystem: subsystem, category: "transcription")
     static let session = Logger(subsystem: subsystem, category: "session")
 }
 

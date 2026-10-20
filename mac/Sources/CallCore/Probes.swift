@@ -22,6 +22,12 @@ public enum Probes {
         switch flag {
         case "--probe-audio":
             return await audio(seconds: value.flatMap(Int.init) ?? 15)
+        case "--probe-transcribe":
+            guard let value else {
+                print("Usage: --probe-transcribe <audio file>")
+                return 64
+            }
+            return await transcribe(file: URL(fileURLWithPath: value))
         default:
             print("Unknown probe \(flag)")
             return 64
@@ -73,6 +79,74 @@ public enum Probes {
                      m.frames, m.peak, s.frames, s.peak, pass ? "PASS" : "FAIL"))
         if let error = mic.captureError { print("mic error: \(error)") }
         return pass ? 0 : 1
+    }
+}
+
+extension Probes {
+    /// Transcribes an audio file as if it were live audio (0.1 s buffers),
+    /// printing partials (marked `~`) and final segments. Returns 0 if any
+    /// final text came back.
+    static func transcribe(file: URL) async -> Int32 {
+        let transcriber = AppleSpeechTranscriber()
+        let started = Date()
+        do {
+            try await transcriber.prepare(
+                onStatus: { print($0) },
+                onProgress: { print(String(format: "model download %.0f%%", $0 * 100)) }
+            )
+        } catch {
+            print("prepare failed: \(error.localizedDescription)")
+            return 2
+        }
+        print(String(format: "prepared in %.1f s", Date().timeIntervalSince(started)))
+
+        let audioFile: AVAudioFile
+        do {
+            audioFile = try AVAudioFile(forReading: file)
+        } catch {
+            print("can't read \(file.path): \(error.localizedDescription)")
+            return 2
+        }
+        let format = audioFile.processingFormat
+        print("file: \(format.sampleRate) Hz, \(format.channelCount) ch, \(audioFile.length) frames")
+
+        let stream = AsyncStream<AVAudioPCMBuffer> { continuation in
+            let chunk = AVAudioFrameCount(format.sampleRate / 10)
+            while let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: chunk),
+                  (try? audioFile.read(into: buffer, frameCount: chunk)) != nil,
+                  buffer.frameLength > 0 {
+                continuation.yield(buffer)
+            }
+            // A second of silence after the speech, as a live call would have.
+            if let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(format.sampleRate)) {
+                silence.frameLength = silence.frameCapacity
+                for channel in 0..<Int(format.channelCount) {
+                    silence.floatChannelData?[channel].update(repeating: 0, count: Int(silence.frameLength))
+                }
+                continuation.yield(silence)
+            }
+            continuation.finish()
+        }
+
+        let finals = OSAllocatedUnfairLock(initialState: [String]())
+        let transcribeStarted = Date()
+        do {
+            try await transcriber.run(
+                stream,
+                onPartial: { if !$0.isEmpty { print("~ \($0)") } },
+                onFinal: { segment in
+                    finals.withLock { $0.append(segment.text) }
+                    print(String(format: "FINAL [%.2f-%.2f s] %@", segment.start, segment.end, segment.text))
+                }
+            )
+        } catch {
+            print("transcription failed: \(error.localizedDescription)")
+            return 1
+        }
+        let text = finals.withLock { $0 }.joined(separator: " ")
+        print(String(format: "transcribed in %.1f s", Date().timeIntervalSince(transcribeStarted)))
+        print("RESULT \(text.isEmpty ? "FAIL (no final text)" : "PASS"): \(text)")
+        return text.isEmpty ? 1 : 0
     }
 }
 

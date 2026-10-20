@@ -2,11 +2,11 @@
 
 **Goal:** A signed macOS app that captures the call's audio (my mic and the system audio, as separate channels), transcribes both live on the Mac, shows a live "Me / Them" transcript in a window, and saves it to disk.
 **Approach:**
-- **Code:** a Swift package with a library (`CallCore`) and a thin SwiftUI app target. Audio capture and streaming transcription are copied from OpenOats (MIT) and trimmed. The transcript model, the session file writer and the session orchestration are new.
+- **Code:** a Swift package with a library (`CallCore`) and a thin SwiftUI app target. Audio capture is copied from OpenOats (MIT). Transcription uses Apple's built-in `SpeechAnalyzer` (macOS 26+). The transcript model, the session file writer and the session orchestration are new.
 - **Build:** a script wraps the binary into a `.app` signed with the local Apple Development identity, so macOS permissions persist across rebuilds.
 - **Testing:** each risky layer gets a command-line probe built into the app, so it can be checked without the UI.
 
-**Stack:** Swift 6.4 (tools 6.2), SwiftUI, macOS 26+, Core Audio process taps, AVAudioEngine, FluidAudio 0.13.5 (Silero VAD + Parakeet TDT v2), Swift Testing.
+**Stack:** Swift 6.4 (tools 6.2), SwiftUI, macOS 26+, Core Audio process taps, AVAudioEngine, Apple Speech (`SpeechAnalyzer` + `SpeechTranscriber`), Swift Testing.
 **Spec:** `private/HANDOFF.md` (gitignored: decisions, requirements) and `cluely-alternative-fact-check.md` (research).
 
 ## Out of scope (later phases), but don't block them
@@ -15,8 +15,11 @@ Phase order (Jace, 2026-10-20): 1 Mac core → 2 Claude answers + playbooks → 
 - The phone server and iPhone app (Phase 3), and headless mode (Phase 6): all session logic lives in `CallCore`, not in views, so a server and a windowless mode can drive it.
 - Screen capture and call recording on the Mac (Phase 4).
 - The codebase index (Phase 5). Remote access (Phase 7).
-- WhisperKit: Parakeet v2 is English only. WhisperKit (multilingual) can be added behind the same `TranscriptionBackend` protocol later.
+- Other speech engines: Parakeet (FluidAudio), WhisperKit or a cloud API can be added later behind the same `LiveTranscriber` protocol, if Apple's accuracy disappoints on real calls.
 - Echo filtering by text similarity: see Risks in Task 5.
+
+## Changes since the plan was written
+- **2026-10-20, Jace:** use Apple's built-in transcriber first, not Parakeet. Apple's `SpeechAnalyzer` (seen in the macOS 27 SDK, available from macOS 26) runs on the Mac, macOS manages its model, and it gives live partial and final results itself. So Task 3 drops FluidAudio, Parakeet and OpenOats' VAD transcriber, and Task 1's FluidAudio dependency comes out of `Package.swift`.
 
 ## File map
 
@@ -28,12 +31,12 @@ mac/
       ThirdParty/OpenOats/          copied from reference/OpenOats (commit ea405d8), each with a header naming the source and changes
         SystemAudioCapture.swift    process-tap system audio → AsyncStream<AVAudioPCMBuffer>
         MicCapture.swift            AVAudioEngine mic → AsyncStream<AVAudioPCMBuffer> (+ AudioLevel/Sync* helpers it defines)
-        StreamingAudioConverter.swift  buffer → 16 kHz mono Float samples
-        StreamingTranscriber.swift  VAD loop → partial/final segments (trimmed: no cloud queue, no diagnostics)
-        TranscriptionBackend.swift  protocol + BackendStatus
-        ParakeetBackend.swift       FluidAudio Parakeet TDT, model dir from ModelStore
-      Logging.swift                 `Log` os.Logger categories the copied files use (streaming, systemAudio, mic)
-      ModelStore.swift              where models live: ~/Library/Application Support/CallAssistant/Models/…
+      Transcription/
+        LiveTranscriber.swift       protocol: prepare (model download), run (audio stream → partial/final text)
+        AppleSpeechTranscriber.swift  SpeechAnalyzer + SpeechTranscriber implementation
+        AudioBufferConverter.swift  capture format → the analyzer's format (AVAudioConverter)
+      Logging.swift                 `Log` os.Logger categories the copied files use (systemAudio, mic, …)
+      Paths.swift                   ~/Library/Application Support/CallAssistant/Sessions
       Transcript/
         Speaker.swift               .me / .them
         Utterance.swift
@@ -76,8 +79,7 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
 - **Interfaces:**
   - `Package.swift`:
     - tools 6.2, `platforms: [.macOS(.v26)]`
-    - dependency `FluidAudio` pinned `exact: "0.13.5"`. OpenOats notes it breaks source compatibility in patch releases.
-    - targets `CallCore` (depends on FluidAudio), `CallAssistant` (executable, depends on CallCore), `CallCoreTests`.
+    - targets `CallCore`, `CallAssistant` (executable, depends on CallCore), `CallCoreTests`. FluidAudio was pinned here at first, then removed in Task 3.
   - The build script:
     - **Identity:** reads `CODESIGN_IDENTITY`, or else picks the first `Apple Development` identity from `security find-identity -v -p codesigning`. Never hard-code a name.
     - **Signing:** `codesign --force --options runtime --entitlements … --sign "$ID"`.
@@ -92,8 +94,7 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - `scripts/build_mac_app.sh` exits 0.
   - `codesign -dv --verbose=2 mac/dist/CallAssistant.app` shows `Authority=Apple Development`, `Identifier=com.jaceg.callassistant` and `flags=0x10000(runtime)`.
   - `open mac/dist/CallAssistant.app` → `pgrep -x CallAssistant` finds it, and a screenshot shows the window.
-- **Risks:**
-  - FluidAudio 0.13.5 may not compile under Swift 6.4. Try it first with `swift build` in an empty target; if it fails, find the nearest version that builds, then adjust the copied code in Task 3.
+- **Result:** done (`ee45fad`). FluidAudio 0.13.5 built on Swift 6.4, but it was removed in Task 3 when Apple's transcriber was chosen.
 
 ### Task 2: Copy audio capture, prove both channels on macOS 27 ⛳ CHECKPOINT
 - **Intent:** this is the riskiest layer. Process taps and microphone access both need Jace to click Allow, and nothing has been tested on macOS 27 yet.
@@ -121,32 +122,46 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - Use `tackle:debugging-systematically`.
   - Do not claim it works until the log shows frames.
 
-### Task 3: Copy streaming transcription, prove Parakeet on a known clip
+### Task 3: Apple speech-to-text, proved on a known clip
 - **Intent:** get on-device speech-to-text working on a deterministic input before wiring it to live audio.
 - **Files:**
-  - `ThirdParty/OpenOats/StreamingAudioConverter.swift`, `StreamingTranscriber.swift`, `TranscriptionBackend.swift` and `ParakeetBackend.swift`
-  - `mac/Sources/CallCore/ModelStore.swift`
+  - `mac/Sources/CallCore/Transcription/LiveTranscriber.swift`, `AppleSpeechTranscriber.swift` and `AudioBufferConverter.swift`
+  - `mac/Tests/CallCoreTests/AudioBufferConverterTests.swift`
   - `Probes.swift`
-- **Trimming `StreamingTranscriber`:**
-  - Remove the cloud segment queue, `CloudSegmentStatus`, the diagnostics and the `skipPartials` path.
-  - Replace OpenOats' `Speaker` with ours.
-  - Drop the `sessionID` and `transcriptionModel` init parameters.
-  - `flushInterval` = `5 * 16_000` for Parakeet (OpenOats' value).
-- **`ModelStore.parakeetDirectory(for:)`:** read `OpenOatsLocalModelStore.parakeetDirectory` first. FluidAudio nests its own folder, and OpenOats wraps that on purpose. Keep the same layout under `CallAssistant/Models/Transcription/`.
+  - `mac/Package.swift` (remove FluidAudio)
 - **Interfaces:**
-  - `protocol TranscriptionBackend: Sendable` (unchanged from OpenOats).
-  - `ParakeetBackend(version: .v2)`.
-  - `StreamingTranscriber(backend:locale:vadManager:speaker:flushInterval:onPartial:onFinal:)`, with `run(stream:) async`.
-  - `FinalSegment { text, startTime, endTime }`, times in seconds from stream start.
-  - `Probes.transcribe(file: URL) async -> Int32`: reads the file into 16 kHz buffers, feeds one `StreamingTranscriber`, and prints each final segment.
+  ```swift
+  public struct TranscribedSegment: Sendable, Equatable { public let text: String; public let start: TimeInterval; public let end: TimeInterval }
+  public protocol LiveTranscriber: Sendable {
+      /// Makes sure the speech model is installed (downloading it if needed) and ready.
+      func prepare(onStatus: @escaping @Sendable (String) -> Void, onProgress: @escaping @Sendable (Double) -> Void) async throws
+      /// Transcribes `audio` until it ends. Partial text replaces the previous partial; "" clears it.
+      func run(_ audio: AsyncStream<AVAudioPCMBuffer>,
+               onPartial: @escaping @Sendable (String) -> Void,
+               onFinal: @escaping @Sendable (TranscribedSegment) -> Void) async throws
+  }
+  ```
+  - `AppleSpeechTranscriber(locale: Locale = .current)`.
+    - **prepare:**
+      - `SpeechTranscriber.supportedLocale(equivalentTo:)`, or else throw "language not supported".
+      - Use `SpeechTranscriber(locale:preset: .progressiveTranscription)`, which gives volatile results.
+      - Check `AssetInventory.status(forModules:)`. If it isn't `.installed`, call `assetInstallationRequest(supporting:)?.downloadAndInstall()` and report `.progress.fractionCompleted`.
+    - **run:**
+      - Get the format from `SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith:)`, then `prepareToAnalyze(in:)`.
+      - Feed `AsyncStream<AnalyzerInput>` from converted buffers into `start(inputSequence:)`.
+      - Read `transcriber.results`: `isFinal` goes to `onFinal` (with `range` converted to seconds), anything else to `onPartial`.
+      - When the audio stream ends, call `finalizeAndFinishThroughEndOfInput()`.
+  - `AudioBufferConverter(to: AVAudioFormat)` with `convert(_ buffer: AVAudioPCMBuffer) throws -> AVAudioPCMBuffer?`. It rebuilds its `AVAudioConverter` when the input format changes.
+  - `Probes.transcribe(file: URL) async -> Int32`: reads the file in 0.1 s buffers as a stream, prints each partial (marked `~`) and each final, and returns 0 if any final text came back.
 - **Check:**
-  - Make a test clip: `say -o /tmp/ca-test.aiff "The quarterly numbers look strong and the launch is on Friday"`.
-  - Run `…/CallAssistant --probe-transcribe /tmp/ca-test.aiff`. Running the binary directly is fine here: no permission is needed.
-  - Expect a final segment containing "quarterly", "launch" and "Friday".
-  - The first run downloads Parakeet v2 (about 600 MB) and the Silero VAD model. Note the download time.
+  - `swift test`: the converter test passes. It turns 1 s of 48 kHz stereo float into the target format (for example 16 kHz mono), and the frame count is within 1% of the rate ratio.
+  - Make a clip: `say -o /tmp/ca-test.aiff "The quarterly numbers look strong and the launch is on Friday"`.
+  - Run `…/CallAssistant --probe-transcribe /tmp/ca-test.aiff`. Expect a final segment containing "quarterly", "launch" and "Friday".
+  - Record whether the English model had to download, and how long it took.
 - **Risks:**
-  - A clip shorter than 1 s of speech yields nothing (the `minimumSpeechSamples` guard).
-  - VAD needs some silence after the speech to emit `speechEnd`, or the end-of-stream flush handles it. Make sure the probe finishes the stream.
+  - The model may need a download on the first run; that's what the status and progress callbacks are for.
+  - Apple's `isFinal` timing on a short clip: the stream ends and the finalize call should flush it.
+  - Two analyzers at once, one per channel, is untested. Check it in Task 5.
 
 ### Task 4: Transcript model and session file (test first)
 - **Intent:** the pure-logic core the UI, Phase 2's answer engine and Phase 5's server will all read.
@@ -196,8 +211,7 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   }
   ```
 - **How it fits together:**
-  - **Backends:** one `ParakeetBackend` per channel, as OpenOats does at `TranscriptionEngine.swift:445-466`, and one shared `VadManager`.
-  - **Transcribers:** each channel runs its `StreamingTranscriber` in a `Task.detached`.
+  - **Transcribers:** one `AppleSpeechTranscriber` per channel, each running in its own `Task`.
   - **Callbacks:** each one hops to the `@MainActor` to update the store and writer.
   - **Times:** convert segment times to `Date` using the session start.
 - **Check:**
@@ -208,7 +222,7 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
 - **Checkpoint:** Jace looks at the log and the file.
 - **Risks:**
   - **Echo:** on speakers the mic also hears "Them", so `Me:` duplicates appear. Use headphones or `echoCancellation = true`. OpenOats' `AcousticEchoFilter` (text-similarity dedupe) is out of scope; note how often duplicates show up for Phase 2.
-  - Running two Parakeet models at once means two copies of the weights in memory. Check the memory use in Activity Monitor.
+  - Two `SpeechAnalyzer`s at once: check that both produce results and note the CPU use.
 
 ### Task 6: Transcript window ⛳ CHECKPOINT (real call)
 - **Intent:** the UI for Phase 1. Run `ui-consistency:finding-patterns` first; this is the project's first page, so expect platform conventions (HIG) to settle most choices, and say so. Then build the window, then `ui-consistency:verifying` by a separate agent.

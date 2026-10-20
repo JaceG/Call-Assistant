@@ -9,18 +9,8 @@ let package = Package(
         .library(name: "CallCore", targets: ["CallCore"]),
         .executable(name: "CallAssistant", targets: ["CallAssistant"]),
     ],
-    dependencies: [
-        // FluidAudio has made source-breaking API changes in patch releases
-        // (noted by OpenOats), so pin it exactly.
-        .package(url: "https://github.com/FluidInference/FluidAudio.git", exact: "0.13.5"),
-    ],
     targets: [
-        .target(
-            name: "CallCore",
-            dependencies: [
-                .product(name: "FluidAudio", package: "FluidAudio"),
-            ]
-        ),
+        .target(name: "CallCore"),
         .executableTarget(
             name: "CallAssistant",
             dependencies: ["CallCore"]
