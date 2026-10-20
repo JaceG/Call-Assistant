@@ -35,6 +35,18 @@ public enum Probes {
                 return 64
             }
             return await transcribe(file: URL(fileURLWithPath: value))
+        case "--probe-answer":
+            guard let value else {
+                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N]")
+                return 64
+            }
+            func option(_ name: String) -> String? { arguments.drop { $0 != name }.dropFirst().first }
+            return await answer(
+                question: value,
+                effort: option("--effort") ?? "low",
+                thinkingOff: arguments.contains("--thinking-off"),
+                runs: option("--runs").flatMap(Int.init) ?? 1
+            )
         default:
             print("Unknown probe \(flag)")
             return 64
@@ -252,5 +264,55 @@ private final class ChannelStats: Sendable {
             vDSP_maxmgv(channels[i], 1, &channelPeak, vDSP_Length(count))
             return channelPeak
         }
+    }
+}
+
+extension Probes {
+    /// Asks Claude `question` `runs` times and prints, for each run, how long
+    /// the first piece of text took, the total time, the token counts and the
+    /// answer. Never prints the key. Returns 0 if every run returned text.
+    static func answer(question: String, effort: String, thinkingOff: Bool, runs: Int) async -> Int32 {
+        let provider = ClaudeProvider(effort: effort, thinkingOff: thinkingOff)
+        let prompt = AnswerPrompt(
+            system: [PromptBlock(text: "You help Jace answer questions live during a call. Answer briefly, so he can say it out loud.")],
+            transcript: [],
+            question: question
+        )
+        print("model \(ClaudeProvider.defaultModel), effort \(effort), thinking \(thinkingOff ? "between_tools (off)" : "adaptive")")
+        var firstTextTimes: [Double] = []
+        var failures = 0
+        for run in 1...max(runs, 1) {
+            let started = ContinuousClock.now
+            var firstText: Duration?
+            var text = ""
+            var ending = "no ending"
+            do {
+                for try await event in provider.answer(prompt) {
+                    switch event {
+                    case .text(let piece):
+                        if firstText == nil { firstText = ContinuousClock.now - started }
+                        text += piece
+                    case .finished(let stopReason, let usage):
+                        ending = "stop \(stopReason), tokens in \(usage.inputTokens) out \(usage.outputTokens) cache read \(usage.cacheReadTokens) write \(usage.cacheWriteTokens)"
+                    case .declined(let category):
+                        ending = "DECLINED (\(category ?? "no category"))"
+                    }
+                }
+            } catch {
+                ending = "ERROR \(error.localizedDescription)"
+            }
+            let total = ContinuousClock.now - started
+            func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
+            if let firstText { firstTextTimes.append(seconds(firstText)) } else { failures += 1 }
+            print(String(format: "run %d: first text %@, total %.2f s, %@", run,
+                         firstText.map { String(format: "%.2f s", seconds($0)) } ?? "-", seconds(total), ending))
+            print("  answer: \(text.replacingOccurrences(of: "\n", with: " ⏎ "))")
+        }
+        let sorted = firstTextTimes.sorted()
+        if !sorted.isEmpty {
+            print(String(format: "RESULT median first text %.2f s over %d runs (min %.2f, max %.2f)",
+                         sorted[sorted.count / 2], sorted.count, sorted.first!, sorted.last!))
+        }
+        return failures == 0 ? 0 : 1
     }
 }
