@@ -233,6 +233,39 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
     - The call audio was captured at about a third of its usual level (peak ~0.28 vs 0.69-0.81), so voice processing turns the other side down even at minimum ducking.
   - **Recognition errors seen:** sound-alikes ("cash" for cache, "rights" for writes, "weights" for waits).
 
+### Task 5b: Echo duplicate filter (test first)
+- **Intent:** on speakers, the mic hears the other side, so Me lines repeat Them lines. Drop or trim them using the Them transcript. There's no model and no volume cost. Jace chose this together with Task 5c (2026-10-20).
+- **Files:** `mac/Sources/CallCore/Transcript/EchoFilter.swift`, `mac/Tests/CallCoreTests/EchoFilterTests.swift` and `Session/LiveSession.swift`.
+- **Rule:**
+  - Compare a Me line with Them lines that overlap it in time, give or take 10 s.
+  - Remove every run of 3 or more consecutive Me words that matches the Them words in order. Words match when equal, or when they're long enough and differ by an edit or two ("cashing"/"caching").
+  - If fewer than 2 words are left, drop the line. Otherwise keep what's left.
+- **LiveSession:**
+  - Holds each Me line for 3 s after it ends before recording it, because the Them line it echoes may finalize later.
+  - Then it filters and records the line.
+  - `stop()` flushes the held lines.
+- **Check:**
+  - `swift test` passes these cases from the checkpoint 2 runs:
+    - an exact duplicate is dropped
+    - "two"/"2" variants are dropped
+    - Jace's own answer is kept
+    - "Sure, the cash. Can you walk me through…" is trimmed to "Sure, the cash."
+    - a fragment ("…how the cast...") is dropped
+    - an identical line 30 s apart is kept
+  - The live probe with echo cancellation off and two played questions shows no duplicate Me lines.
+- **Risks:** if Jace repeats the other person's words within 10 s, those words get trimmed.
+
+### Task 5c: WebRTC echo canceller (reference: the system audio)
+- **Intent:** remove the speaker echo from the mic signal itself, using the system tap as the known far-end audio, without turning the call down the way Apple's voice processing does.
+- **First step, research:** how to build WebRTC's AEC3 for macOS arm64 inside this package. Candidates are the `webrtc-audio-processing` extraction (meson; BSD), a prebuilt xcframework, or an existing Swift wrapper. Check the license and whether it needs Homebrew tools (ask Jace before installing any).
+- **Then:**
+  - Pass the system audio to the canceller as the far-end ("render") stream and the mic as the near-end ("capture") stream, both 10 ms frames at the same rate.
+  - Transcribe the canceller's output for Me.
+- **Check:**
+  - With echo cancellation off and the duplicate filter disabled, the live probe's played questions don't appear as Me lines, while Jace's spoken answers do.
+  - The system-audio level is unchanged compared with no processing.
+- **Checkpoint:** the research result (approach, effort, license) goes to Jace before integration.
+
 ### Task 6: Transcript window ⛳ CHECKPOINT (real call)
 - **Intent:** the UI for Phase 1. Run `ui-consistency:finding-patterns` first; this is the project's first page, so expect platform conventions (HIG) to settle most choices, and say so. Then build the window, then `ui-consistency:verifying` by a separate agent.
 - **Files:** `mac/Sources/CallAssistant/TranscriptWindow.swift` and `CallAssistantApp.swift`.
