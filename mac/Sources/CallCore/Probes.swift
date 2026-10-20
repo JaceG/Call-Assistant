@@ -23,7 +23,11 @@ public enum Probes {
         case "--probe-audio":
             return await audio(seconds: value.flatMap(Int.init) ?? 15, echoCancellation: arguments.contains("--aec"))
         case "--probe-live":
-            return await live(seconds: value.flatMap(Int.init) ?? 30, echoCancellation: arguments.contains("--aec"))
+            return await live(
+                seconds: value.flatMap(Int.init) ?? 30,
+                echoCancellation: arguments.contains("--aec"),
+                filterEcho: !arguments.contains("--no-echo-filter")
+            )
         case "--probe-transcribe":
             guard let value else {
                 print("Usage: --probe-transcribe <audio file>")
@@ -161,10 +165,11 @@ extension Probes {
     /// transcribed and saved. Prints each finished utterance as it arrives.
     /// Returns 0 if both sides produced at least one.
     @MainActor
-    static func live(seconds: Int, echoCancellation: Bool = false) async -> Int32 {
+    static func live(seconds: Int, echoCancellation: Bool = false, filterEcho: Bool = true) async -> Int32 {
         let session = LiveSession()
         session.echoCancellation = echoCancellation
-        print("echo cancellation: \(echoCancellation ? "on" : "off")")
+        session.filterEcho = filterEcho
+        print("echo cancellation: \(echoCancellation ? "on" : "off"), echo filter: \(filterEcho ? "on" : "off")")
         let clock = { (date: Date) in date.clockTime(in: .current) }
         await session.start()
         if case .failed(let message) = session.state {
@@ -187,7 +192,6 @@ extension Probes {
         }
         print("stopping…")
         await session.stop()
-        try? await Task.sleep(for: .milliseconds(300))  // the last results hop to the main actor
         printNew()
 
         let counts = Dictionary(grouping: session.store.utterances, by: \.speaker).mapValues(\.count)

@@ -24,12 +24,21 @@ public final class LiveSession {
     /// Voice processing on the mic, so it doesn't pick up the other side from
     /// the speakers. Not needed with headphones. Applies from the next start.
     public var echoCancellation = false
+    /// Drop or trim my lines that repeat what they just said (the mic hearing
+    /// the speakers). Text only, so it costs no volume.
+    public var filterEcho = true
 
     private let sessionsDirectory: URL
     private var mic: MicCapture?
     private var system: SystemAudioCapture?
     private var writer: SessionWriter?
     private var channels: [Task<Void, Never>] = []
+    /// My lines wait this long before they're recorded, because the line of
+    /// theirs they may echo can finish recognizing a little later.
+    private static let echoHold: TimeInterval = 3
+    private let echoFilter = EchoFilter()
+    private var heldMine: [(utterance: Utterance, heldAt: Date)] = []
+    private var releaser: Task<Void, Never>?
 
     public init(sessionsDirectory: URL = Paths.sessionsDirectory) {
         self.sessionsDirectory = sessionsDirectory
@@ -94,6 +103,12 @@ public final class LiveSession {
             channel(.me, transcriber: micTranscriber, audio: micAudio),
             channel(.them, transcriber: systemTranscriber, audio: systemAudio),
         ]
+        releaser = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(500))
+                self?.releaseHeldLines()
+            }
+        }
         state = .listening
         Log.session.info("listening; transcript at \(self.sessionFile?.path ?? "-", privacy: .public)")
     }
@@ -107,6 +122,11 @@ public final class LiveSession {
         await system?.stop()
         for channel in channels { await channel.value }
         channels = []
+        releaser?.cancel()
+        releaser = nil
+        // The last results hop to the main actor after the channels end.
+        try? await Task.sleep(for: .milliseconds(200))
+        releaseHeldLines(all: true)
         mic = nil
         system = nil
         writer?.close()
@@ -143,6 +163,33 @@ public final class LiveSession {
     }
 
     private func record(_ utterance: Utterance) {
+        if utterance.speaker == .me && filterEcho {
+            heldMine.append((utterance, Date()))
+            return
+        }
+        commit(utterance)
+    }
+
+    /// Filters and records my held lines once they've waited long enough
+    /// (or all of them, when stopping).
+    private func releaseHeldLines(all: Bool = false) {
+        let now = Date()
+        let ready = heldMine.filter { all || $0.heldAt + Self.echoHold <= now }
+        guard !ready.isEmpty else { return }
+        heldMine.removeAll { held in ready.contains { $0.utterance.id == held.utterance.id } }
+        for (utterance, _) in ready {
+            if let cleaned = echoFilter.clean(utterance, against: store.utterances) {
+                if cleaned.text != utterance.text {
+                    Log.session.info("echo trimmed: \"\(utterance.text, privacy: .private)\" -> \"\(cleaned.text, privacy: .private)\"")
+                }
+                commit(cleaned)
+            } else {
+                Log.session.info("echo dropped: \"\(utterance.text, privacy: .private)\"")
+            }
+        }
+    }
+
+    private func commit(_ utterance: Utterance) {
         store.append(utterance)
         do {
             try writer?.append(utterance)
