@@ -31,8 +31,9 @@ public struct Utterance: Identifiable, Codable, Sendable, Equatable {
 }
 
 extension Date {
-    /// "14:13:25" in the given time zone, for transcript lines.
-    func clockTime(in timeZone: TimeZone) -> String {
+    /// "14:13:25" in the given time zone, for transcript lines (the window,
+    /// the copied text and the session file all show times this way).
+    public func clockTime(in timeZone: TimeZone = .current) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         let c = calendar.dateComponents([.hour, .minute, .second], from: self)
