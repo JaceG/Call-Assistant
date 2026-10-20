@@ -64,3 +64,6 @@ pairing/
 
 # Personal agent notes (not for the public repo)
 private/
+
+# Mac app build output
+mac/dist/
