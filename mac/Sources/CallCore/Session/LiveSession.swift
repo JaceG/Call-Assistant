@@ -19,6 +19,8 @@ public final class LiveSession {
 
     public private(set) var state: State = .idle
     public let store = TranscriptStore()
+    /// Claude's answers for this call.
+    public let answers: AnswerEngine
     /// The current (or last) call's transcript file.
     public private(set) var sessionFile: URL?
     /// WebRTC's echo canceller: removes the speakers' sound from the mic, using
@@ -45,8 +47,10 @@ public final class LiveSession {
     private var heldMine: [(utterance: Utterance, heldAt: Date)] = []
     private var releaser: Task<Void, Never>?
 
-    public init(sessionsDirectory: URL = Paths.sessionsDirectory) {
+    public init(sessionsDirectory: URL = Paths.sessionsDirectory, provider: AnswerProvider = ClaudeProvider()) {
         self.sessionsDirectory = sessionsDirectory
+        answers = AnswerEngine(provider: provider)
+        answers.onFinished = { [weak self] answer in self?.save(answer) }
     }
 
     public var isRunning: Bool {
@@ -59,6 +63,7 @@ public final class LiveSession {
     public func start() async {
         guard !isRunning else { return }
         store.clear()
+        answers.reset()
         state = .preparing("Checking the speech model…", progress: nil)
 
         let micTranscriber = AppleSpeechTranscriber()
@@ -141,9 +146,10 @@ public final class LiveSession {
         // The last results hop to the main actor after the channels end.
         try? await Task.sleep(for: .milliseconds(200))
         releaseHeldLines(all: true)
+        await answers.finishCurrent(within: .seconds(10))
         // Lines were saved as each finished; put the file in time order.
         do {
-            try writer?.rewrite(store.utterances)
+            try writer?.rewrite(store.utterances, answers: answers.answers)
         } catch {
             Log.session.error("couldn't put the transcript in order: \(error.localizedDescription, privacy: .public)")
         }
@@ -245,6 +251,17 @@ public final class LiveSession {
             try writer?.append(utterance)
         } catch {
             Log.session.error("couldn't write to the transcript: \(error.localizedDescription, privacy: .public)")
+        }
+        answers.lineRecorded(utterance, transcript: store)
+    }
+
+    /// Adds a finished answer to the call file (answers given outside a call
+    /// aren't saved).
+    private func save(_ answer: Answer) {
+        do {
+            try writer?.append(answer)
+        } catch {
+            Log.session.error("couldn't write an answer to the transcript: \(error.localizedDescription, privacy: .public)")
         }
     }
 

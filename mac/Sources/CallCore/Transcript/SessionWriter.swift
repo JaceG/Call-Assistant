@@ -57,11 +57,24 @@ public final class SessionWriter: @unchecked Sendable {
         }
     }
 
-    /// Replaces the file's lines with `utterances`, in the order given (the
-    /// transcript store keeps them in time order). The file is swapped in one
-    /// step, so a crash leaves either the old file or the new one.
-    public func rewrite(_ utterances: [Utterance]) throws {
-        let contents = header + utterances.map(line(for:)).joined()
+    /// Writes Claude's answer as a quote block, under who asked and what.
+    public func append(_ answer: Answer) throws {
+        try handle.withLockUnchecked { fileHandle in
+            guard let fileHandle else { return }
+            try fileHandle.write(contentsOf: Data(block(for: answer).utf8))
+        }
+    }
+
+    /// Replaces the file's contents with `utterances` (in the order given; the
+    /// transcript store keeps them in time order) and `answers` placed among
+    /// them by the time each was asked. The file is swapped in one step, so a
+    /// crash leaves either the old file or the new one.
+    public func rewrite(_ utterances: [Utterance], answers: [Answer] = []) throws {
+        let entries = utterances.map { ($0.start, line(for: $0)) } + answers.map { ($0.askedAt, block(for: $0)) }
+        let ordered = entries.enumerated()
+            .sorted { ($0.element.0, $0.offset) < ($1.element.0, $1.offset) }
+            .map(\.element.1)
+        let contents = header + ordered.joined()
         try handle.withLockUnchecked { fileHandle in
             try? fileHandle?.close()
             fileHandle = nil
@@ -74,6 +87,27 @@ public final class SessionWriter: @unchecked Sendable {
 
     private func line(for utterance: Utterance) -> String {
         "**[\(utterance.start.clockTime(in: timeZone))] \(utterance.speaker.label):** \(utterance.text)\n\n"
+    }
+
+    /// "> **[HH:mm:ss] Claude** (auto): *question*", then the text, quoted,
+    /// then how it ended if it didn't finish.
+    private func block(for answer: Answer) -> String {
+        var lines = ["> **[\(answer.askedAt.clockTime(in: timeZone))] Claude** (\(answer.trigger.label)): *\(answer.question)*", ">"]
+        let text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !text.isEmpty {
+            lines += text.components(separatedBy: "\n").map { $0.isEmpty ? ">" : "> \($0)" }
+        }
+        let ending: String? = switch answer.state {
+        case .stopped: "*(stopped)*"
+        case .failed(let message): "*(failed: \(message))*"
+        case .declined: "*(Claude declined to answer this one.)*"
+        case .waiting, .streaming, .done: nil
+        }
+        if let ending {
+            if !text.isEmpty { lines.append(">") }
+            lines.append("> \(ending)")
+        }
+        return lines.joined(separator: "\n") + "\n\n"
     }
 
     public func close() {

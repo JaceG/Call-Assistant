@@ -27,7 +27,8 @@ public enum Probes {
                 seconds: value.flatMap(Int.init) ?? 30,
                 cancelEcho: !arguments.contains("--no-echo-canceller"),
                 appleVoiceProcessing: arguments.contains("--apple-voice-processing"),
-                filterEcho: !arguments.contains("--no-echo-filter")
+                filterEcho: !arguments.contains("--no-echo-filter"),
+                autoAnswer: arguments.contains("--auto-answer")
             )
         case "--probe-transcribe":
             guard let value else {
@@ -187,11 +188,13 @@ extension Probes {
     /// transcribed and saved. Prints each finished utterance as it arrives.
     /// Returns 0 if both sides produced at least one.
     @MainActor
-    static func live(seconds: Int, cancelEcho: Bool, appleVoiceProcessing: Bool, filterEcho: Bool) async -> Int32 {
+    static func live(seconds: Int, cancelEcho: Bool, appleVoiceProcessing: Bool, filterEcho: Bool, autoAnswer: Bool = false) async -> Int32 {
         let session = LiveSession()
         session.cancelEcho = cancelEcho
         session.appleVoiceProcessing = appleVoiceProcessing
         session.filterEcho = filterEcho
+        session.answers.autoAnswer = autoAnswer
+        if autoAnswer { print("Auto-Answer: on") }
         print("echo canceller (WebRTC): \(cancelEcho ? "on" : "off"), Apple voice processing: \(appleVoiceProcessing ? "on" : "off"), echo filter: \(filterEcho ? "on" : "off")")
         let clock = { (date: Date) in date.clockTime(in: .current) }
         await session.start()
@@ -206,6 +209,20 @@ extension Probes {
             for utterance in session.store.utterances where !printed.contains(utterance.id) {
                 printed.insert(utterance.id)
                 print("[\(clock(utterance.start))] \(utterance.speaker.label): \(utterance.text)")
+            }
+            for answer in session.answers.answers where answer.state.isFinished && !printed.contains(answer.id) {
+                printed.insert(answer.id)
+                // How long after their line ended the first words appeared.
+                let theirLine = session.store.utterances.last { $0.speaker == .them && $0.end <= answer.askedAt }
+                let afterLine = answer.firstTextAfter.flatMap { first in
+                    theirLine.map { answer.askedAt.timeIntervalSince($0.end) + first }
+                }
+                print(String(format: "[%@] Claude (%@, %@): first text %@ after the request, %@ after their line ended",
+                             clock(answer.askedAt), answer.trigger.label, "\(answer.state)",
+                             answer.firstTextAfter.map { String(format: "%.2f s", $0) } ?? "-",
+                             afterLine.map { String(format: "%.2f s", $0) } ?? "-"))
+                print("  asked: \(answer.question)")
+                print("  answer: \(answer.text.replacingOccurrences(of: "\n", with: " ⏎ "))")
             }
         }
         let end = Date() + Double(seconds)
