@@ -1,7 +1,6 @@
 import CallCore
 import SwiftUI
 
-@main
 struct CallAssistantApp: App {
     var body: some Scene {
         Window("Call Assistant", id: "transcript") {
