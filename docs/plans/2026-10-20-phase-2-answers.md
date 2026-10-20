@@ -493,6 +493,25 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
     - The panes have no minimum heights.
     - The answer header separates time, trigger and question by spacing only.
   - **Not yet run:** Start with audio and Auto-Answer in the window, pressing ⌃⌥A, and the failed and declined states as they look on screen.
+- **Checkpoint 2 (2026-10-20), with Jace and then by me:**
+  - **First window test** (two played questions): Jace said "I do not like the way it answers. I need the very first thing I read to be the response I need to give to the other person… sometimes it's not even there."
+    - The answer had opened with "They said 'cash,' but they almost certainly mean caching… Here's a way to say it:".
+    - Fixed in `13ecee7`: the words to say come first, in semibold.
+  - **Second test:** Jace said "I need a quick concise answer, and then an elaborated answer that picks up after it naturally. I need them clearly separated but nothing in between them either."
+    - Fixed in `bc97f23`: a one-sentence quick answer (semibold), a blank line, then 2–4 sentences that carry on from it, with no bullets.
+    - Live check: 6 of 6 replies in that shape.
+  - **⌃⌥A:** Jace pressed it before Start, when nothing had been heard, so nothing happened. No call file had been created after 12:21.
+    - I tested it at 12:35: listening, with Finder in front, ⌃⌥A added an "Answer Now" answer at 12:36:02.
+    - An alert sound for "nothing to answer yet" was tried, then removed ("No alter sound, that's dumb").
+  - **Jace can't test real calls**, so I ran a mock interview myself: the YouTube video "Mastering iOS Development: Mock Interview with Narendra!", from 5:00 to 7:37, played in the built-in browser.
+    - **The file:** `2026-10-20 1241 call.md`, 32 Them lines. Both voices count as Them.
+    - **Auto-Answer** answered 2 questions with sayable quick answers:
+      - "do we have anything in the suite [Swift] that is not represented in objective C?" got "Yes, Swift has several features that Objective-C simply can't represent, like generics, structs with methods, and enums with associated values."
+      - "Can you maybe describe or elaborate how these optionals works…?" got "Optionals are a type that either holds a value or holds nothing, and under the hood they're just a generic enum called Optional…". That answer started 5 s after the line began.
+    - **Skipped correctly:** "Mm-hmm. Forces?" and "…right?".
+    - **The first answer waited about 8 s,** because the video's candidate kept talking and counts as Them too. On a real call, Jace's own voice is "Me", so it wouldn't wait.
+    - **One question went unanswered** (12:44:00) because I stopped the recording 8 s later.
+    - **Answer Now (the button) at 12:43:03** answered. Its header showed the words still being spoken, "So this is the way of", a fragment.
 - **Risks:**
   - **`RegisterEventHotKey`** is expected to work without the Accessibility permission. That hasn't been tested here, so check it first.
   - **The toolbar** may overflow into » at the 420-point minimum width. That's fine, but check what's hidden first.
