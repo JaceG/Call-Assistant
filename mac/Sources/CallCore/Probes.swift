@@ -21,7 +21,7 @@ public enum Probes {
         let value = arguments.drop { $0 != flag }.dropFirst().first
         switch flag {
         case "--probe-audio":
-            return await audio(seconds: value.flatMap(Int.init) ?? 15)
+            return await audio(seconds: value.flatMap(Int.init) ?? 15, echoCancellation: arguments.contains("--aec"))
         case "--probe-live":
             return await live(seconds: value.flatMap(Int.init) ?? 30, echoCancellation: arguments.contains("--aec"))
         case "--probe-transcribe":
@@ -39,16 +39,17 @@ public enum Probes {
     /// Captures the mic and the system audio for `seconds`, printing frames and
     /// peak level once a second. Returns 0 only if both channels delivered frames
     /// with sound in them.
-    static func audio(seconds: Int) async -> Int32 {
+    static func audio(seconds: Int, echoCancellation: Bool = false) async -> Int32 {
         let micAllowed = await AVAudioApplication.requestRecordPermission()
         print("microphone permission: \(micAllowed ? "granted" : "denied")")
+        print("echo cancellation: \(echoCancellation ? "on" : "off")")
 
         let mic = MicCapture()
         let system = SystemAudioCapture()
         let micStats = ChannelStats()
         let systemStats = ChannelStats()
 
-        let micStream = mic.bufferStream()
+        let micStream = mic.bufferStream(echoCancellation: echoCancellation)
         let systemStream: AsyncStream<AVAudioPCMBuffer>
         do {
             systemStream = try await system.bufferStream().systemAudio
@@ -66,7 +67,8 @@ public enum Probes {
             let m = micStats.takeInterval()
             let s = systemStats.takeInterval()
             print(String(format: "%3ds  mic frames=%6d peak=%.4f | system frames=%6d peak=%.4f",
-                         second, m.frames, m.peak, s.frames, s.peak))
+                         second, m.frames, m.peak, s.frames, s.peak)
+                  + "  mic channels " + m.channelPeaks.map { String(format: "%.3f", $0) }.joined(separator: " "))
         }
 
         mic.stop()
@@ -201,22 +203,30 @@ extension Probes {
 /// Frame count and peak level of one audio channel, safe to update from the
 /// capture thread and read from the probe.
 private final class ChannelStats: Sendable {
-    private struct Counts { var frames = 0; var peak: Float = 0 }
+    private struct Counts { var frames = 0; var peak: Float = 0; var channelPeaks: [Float] = [] }
     private let interval = OSAllocatedUnfairLock(initialState: Counts())
     private let total = OSAllocatedUnfairLock(initialState: Counts())
 
     func add(_ buffer: AVAudioPCMBuffer) {
         let frames = Int(buffer.frameLength)
-        let peak = Self.peak(of: buffer)
+        let peaks = Self.channelPeaks(of: buffer)
+        let peak = peaks.max() ?? 0
         for lock in [interval, total] {
-            lock.withLock { $0.frames += frames; $0.peak = max($0.peak, peak) }
+            lock.withLock { counts in
+                counts.frames += frames
+                counts.peak = max(counts.peak, peak)
+                if counts.channelPeaks.count < peaks.count {
+                    counts.channelPeaks += Array(repeating: 0, count: peaks.count - counts.channelPeaks.count)
+                }
+                for (i, p) in peaks.enumerated() { counts.channelPeaks[i] = max(counts.channelPeaks[i], p) }
+            }
         }
     }
 
-    func takeInterval() -> (frames: Int, peak: Float) {
+    func takeInterval() -> (frames: Int, peak: Float, channelPeaks: [Float]) {
         interval.withLock { counts in
             defer { counts = Counts() }
-            return (counts.frames, counts.peak)
+            return (counts.frames, counts.peak, counts.channelPeaks)
         }
     }
 
@@ -224,18 +234,17 @@ private final class ChannelStats: Sendable {
         total.withLock { ($0.frames, $0.peak) }
     }
 
-    private static func peak(of buffer: AVAudioPCMBuffer) -> Float {
-        guard let channels = buffer.floatChannelData else { return 0 }
+    /// Peak level per channel (one value for interleaved audio).
+    private static func channelPeaks(of buffer: AVAudioPCMBuffer) -> [Float] {
+        guard let channels = buffer.floatChannelData else { return [] }
         let format = buffer.format
         // Interleaved audio keeps every channel's samples in the first pointer.
         let pointers = format.isInterleaved ? 1 : Int(format.channelCount)
         let count = Int(buffer.frameLength) * (format.isInterleaved ? Int(format.channelCount) : 1)
-        var peak: Float = 0
-        for i in 0..<pointers {
+        return (0..<pointers).map { i in
             var channelPeak: Float = 0
             vDSP_maxmgv(channels[i], 1, &channelPeak, vDSP_Length(count))
-            peak = max(peak, channelPeak)
+            return channelPeak
         }
-        return peak
     }
 }

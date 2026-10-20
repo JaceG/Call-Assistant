@@ -51,6 +51,26 @@ struct AudioBufferConverterTests {
         #expect(Self.peak(steady) > 10_000)
     }
 
+    /// With voice processing on, the Mac's mic delivers 9 identical channels
+    /// (measured 2026-10-20). AVAudioConverter turned that into silence until
+    /// the converter learned to take channel 0.
+    @Test func turnsNineChannelVoiceProcessingAudioIntoSound() throws {
+        let layout = AVAudioChannelLayout(layoutTag: kAudioChannelLayoutTag_DiscreteInOrder | 9)!
+        let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48_000, interleaved: false, channelLayout: layout)
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000)!
+        buffer.frameLength = 48_000
+        for channel in 0..<9 {
+            for i in 0..<48_000 {
+                buffer.floatChannelData![channel][i] = Float(sin(2 * Double.pi * 440 * Double(i) / 48_000) * 0.5)
+            }
+        }
+        let converter = AudioBufferConverter(to: Self.mono16k)
+        _ = try converter.convert(buffer)
+        let steady = try #require(try converter.convert(buffer))
+        #expect(abs(Int(steady.frameLength) - 16_000) <= 160)
+        #expect(Self.peak(steady) > 10_000)
+    }
+
     @Test func passesThroughAudioAlreadyInTheTargetFormat() throws {
         let converter = AudioBufferConverter(to: Self.mono16k)
         let buffer = AVAudioPCMBuffer(pcmFormat: Self.mono16k, frameCapacity: 1_600)!

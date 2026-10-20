@@ -30,6 +30,12 @@ final class AudioBufferConverter {
             // No priming: start each stream at its first sample rather than
             // padding it, so result times line up with the audio.
             newConverter.primeMethod = .none
+            // AVAudioConverter can't mix many discrete channels down to mono:
+            // it outputs silence. With voice processing on, the mic delivers 9
+            // identical channels (measured 2026-10-20), so take the first.
+            if inputFormat.channelCount > 2 && outputFormat.channelCount == 1 {
+                newConverter.channelMap = [0]
+            }
             converter = newConverter
         }
         guard let converter else { return nil }
