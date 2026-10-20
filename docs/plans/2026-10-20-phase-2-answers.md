@@ -383,25 +383,37 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   not derivable from its few literals, so values are SwiftUI's system styles and default spacing.
 
   - [ ] window holder — the existing Window("Call Assistant", id: "transcript") and its floating
-        level; the body becomes a VSplitView, transcript above, answers pane below; the minimum
-        420 × 300 kept — the agreed shape (plan's yes); the minimum is the reference's own literal
+        level; the body becomes a VSplitView, transcript above, answers pane below, inside a
+        VStack(spacing: 0) with the existing Divider + StatusBar under it (the split view ignores
+        safe-area insets, so the reference's .safeAreaInset put the Ask field over the status bar —
+        found by running it); the minimum 420 × 300 kept — the agreed shape (plan's yes); the
+        minimum is the reference's own literal
   - [ ] toolbar order — the four existing items keep their places; Playbook, Call Notes, Answer
         Now and Auto-Answer follow in that reading order — a position no member has: nowhere to
         read an order from, so the existing controls keep their places (conventions, rare)
   - [ ] toolbar items — each a Label("…", systemImage:) with a .help("…") sentence that starts
         with a verb, like the four existing ones; Auto-Answer is a Toggle with .toggleStyle(.button),
         "bolt.fill" while on and "bolt" while off, stored with @AppStorage behind a static key and
-        default constant, like Keep on Top — the reference's own way (1 member)
-  - [ ] Answer Now — disabled when the transcript has no line and nothing in progress, and while
-        preparing or stopping, like Copy Transcript's disabled rule; its help names ⌃⌥A — the
-        reference's own way
+        default constant, like Keep on Top — the reference's own way (1 member). Playbook is a Menu
+        whose Label is the playbook's name ("No Playbook" for none) with .labelStyle(.titleAndIcon),
+        holding an inline Picker ("None" + one entry per file); the name is stored with @AppStorage
+        like the other settings. A menu-style Picker in the toolbar showed blank on macOS 27 —
+        found by running it
+  - [ ] Answer Now — disabled through LiveSession.canAnswerNow: no finished line and nothing in
+        progress, or while preparing or stopping (the hotkey checks the same property); its help
+        names ⌃⌥A — a new rule: Copy Transcript's rule (finished lines only) doesn't fit, as the
+        calibration checker found
   - [ ] answers list — ScrollView + LazyVStack(alignment: .leading) with .padding(), newest at the
-        bottom, following new text unless scrolled up, through the same ScrollPosition +
-        onScrollGeometryChange mechanism and the same bottomTolerance constant, made shared rather
-        than written twice — the reference's own way; one constant, not a copy
+        bottom; a new answer (and the newest one when the list appears) scrolls its top into view
+        through ScrollPosition.scrollTo(id:anchor: .top) over a .scrollTargetLayout(), and the
+        list does not follow streaming
+        text — unlike the transcript, which follows new lines: in a short pane, following pushed
+        an answer's first sentence (what Jace says out loud) out of view — found by running it
+        (2026-10-20); bottomTolerance stays the transcript's own
   - [ ] one answer — a view in AnswersPane.swift (Jace): header with the time as .caption
-        .monospacedDigit() .secondary (the transcript line's time style), then "Auto" / "Asked" /
-        "Typed" and the question in .caption .secondary; the text as .body, selectable, inline
+        .monospacedDigit() .secondary (the transcript line's time style), then the trigger's name
+        from Answer.Trigger.label ("Auto" / "Answer Now" / "Typed", the same words the call file
+        uses) and the question in .caption .secondary, at most 2 lines; the text as .body, selectable, inline
         Markdown only; answers separated by Divider(); the block reads as one VoiceOver item
         (.accessibilityElement(children: .combine), like a transcript line) — the reference's own
         type roles; Divider as the plainest separator (decisions, what this does not decide)
@@ -410,7 +422,9 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
         bar's failure style); declined: "Claude declined to answer this one." in .secondary — the
         reference's own styles; new copy for Jace to read
   - [ ] empty state — centred .secondary text: "Answers appear here. Press Answer Now, type a
-        question, or turn on Auto-Answer." — the reference's empty-state way; new copy
+        question, or turn on Auto-Answer." — the reference's empty-state way; new copy. It wraps
+        in a narrow window, so .multilineTextAlignment(.center) and .padding() are added (the
+        reference's one-line text needs neither)
   - [ ] Ask field — TextField("Ask Claude…") at the bottom of the answers pane with .padding();
         Return sends a non-empty question and clears the field; usable with no call running — a
         position no member has: the plainest way SwiftUI allows
@@ -425,6 +439,15 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
         repeats in a family of one; the speaker column (Me/Them) isn't used for answers
   ```
   (Searches the counts came from: the reference's exact names `ToolbarItemGroup`, `Label(`, `.help(`, `.toggleStyle(.button)`, `@AppStorage`, `ScrollPosition`, `onScrollGeometryChange`, `bottomTolerance`, `.caption.monospacedDigit()`, `.accessibilityElement(children: .combine)`, `.foregroundStyle(.red)`. Each was run over `mac/Sources/CallAssistant/*.swift` and found in `TranscriptWindow.swift` only. No `DESIGN.md` at the repo root.)
+- **Calibration (2026-10-20): passed.**
+  - **The plant:** a worktree copy of `TranscriptWindow.swift` in a `mktemp -d` folder, with the transcript time's `.monospacedDigit()` removed (a type role with part of its bundle missing).
+  - **Caught:** the checker named it as a difference against the "one answer" line (`TranscriptWindow.swift:141-146`).
+  - **It also found two checklist errors, now fixed above:**
+    - "like Copy Transcript's disabled rule" was wrong: Copy only checks finished lines.
+    - The window would have said "Asked" where the call file says "Answer Now". Both now use `Answer.Trigger.label`, which says "Auto" / "Answer Now" / "Typed".
+  - **And a note:** the long empty-state text would wrap, left-aligned.
+  - **What no plant tested:** scrolling, sizes, overflow, the words, and the behaviour. Those are checked by running the app.
+  - The worktree was removed afterwards.
 - **Steps:**
   1. **Calibrate the check** before building. A separate agent with `ui-consistency:verifying` gets a scratch copy of `TranscriptWindow.swift` (kept outside the repo), with one role written differently, and this checklist. It's told only that the copy differs somewhere; whoever plants doesn't check. If it misses the planted difference, stop and report that the check is blind for it.
   2. **Build** `GlobalHotKey` (⌃⌥A → `answers.answerNow`; it doesn't bring the window forward), then `AnswersPane.swift`, then the `TranscriptWindow.swift` changes. Re-read the checklist before writing; don't work from memory.
@@ -437,6 +460,39 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - Press ⌃⌥A with another app in front: an Answer Now answer appears.
   - Screenshots of each, and the verifying report with no open findings.
 - **Checkpoint:** Jace runs it with played questions, then on a real call. Record what he reports, in his words.
+- **Status:** done. The check passed, with two minor items left open; Jace's checkpoint is next.
+- **Result so far (2026-10-20):**
+  - **Built:** in `e85b001`, plus the round-1 fixes.
+  - **Found by running it, fixed, and written into the checklist above:**
+    - The split view ignores safe-area insets, so the status bar moved into a `VStack` under the split.
+    - A menu-style toolbar `Picker` showed blank, so the Playbook control is a `Menu` labelled with the name.
+    - Following streamed text pushed an answer's first sentence out of view, so a new answer now scrolls to its top and stays there.
+  - **Tried by me in the running app:**
+    - A typed question streams in, with its header, and bold renders.
+    - A second typed question stops the first, which shows "Stopped" with its text kept.
+    - Call Notes reach Claude: "Who am I talking to?" got "You're talking to **Dana**… **senior iOS** engineer".
+    - Auto-Answer's icon fills while it's on.
+    - Answer Now stays grey with nothing heard.
+    - The Playbook menu shows "General".
+    - Nothing logged about ⌃⌥A failing to register (that's absence of an error, not proof it works).
+  - **`ui-consistency:verifying`** (a separate agent; not the calibrated one):
+    - **Round 1:** no differences from the checklist. Of its other notes, three were fixed:
+      - a failed folder read reset the stored playbook to none
+      - long questions could fill the pane (now `.lineLimit(2)`)
+      - the notes editor had no accessibility label
+
+      Also, `.scrollTargetLayout()` was added to the checklist.
+    - **Round 2:** all three fixes confirmed, nothing regressed.
+    - **Still open, in the checker's words:**
+      - "If the very first read of the Playbooks folder fails when the window opens… the toolbar label still shows the stored name ("General"), but no playbook is sent to Claude."
+      - "a sighted user still opens an empty box with no placeholder or title" (Call Notes).
+  - **Left for Jace to judge on his test** (the checker's notes, not changed):
+    - Call notes carry into the next call.
+    - Answer Now is enabled with only Me lines.
+    - A failed ⌃⌥A registration is only logged.
+    - The panes have no minimum heights.
+    - The answer header separates time, trigger and question by spacing only.
+  - **Not yet run:** Start with audio and Auto-Answer in the window, pressing ⌃⌥A, and the failed and declined states as they look on screen.
 - **Risks:**
   - **`RegisterEventHotKey`** is expected to work without the Accessibility permission. That hasn't been tested here, so check it first.
   - **The toolbar** may overflow into » at the 420-point minimum width. That's fine, but check what's hidden first.

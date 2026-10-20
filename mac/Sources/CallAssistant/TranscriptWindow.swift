@@ -153,6 +153,7 @@ struct TranscriptWindow: View {
             .help("Write notes about this call for Claude")
             .popover(isPresented: $showingNotes) {
                 TextEditor(text: callNotes)
+                    .accessibilityLabel("Call notes")
                     .frame(width: Self.notesSize.width, height: Self.notesSize.height)
                     .padding()
             }
@@ -177,9 +178,12 @@ struct TranscriptWindow: View {
         Binding(get: { session.answers.callNotes }, set: { session.answers.callNotes = $0 })
     }
 
+    /// Reads the Playbooks folder again. If it can't be read, the list and
+    /// the choice stay as they were rather than falling back to none.
     private func reloadPlaybooks() {
-        playbooks = (try? PlaybookLibrary().load()) ?? []
-        if !playbookName.isEmpty && !playbooks.contains(where: { $0.name == playbookName }) {
+        guard let loaded = try? PlaybookLibrary().load() else { return }
+        playbooks = loaded
+        if !playbookName.isEmpty && !loaded.contains(where: { $0.name == playbookName }) {
             playbookName = ""
         }
         applyPlaybook()

@@ -68,7 +68,9 @@ private struct AnswerView: View {
                 Text(verbatim: answer.askedAt.clockTime())
                     .font(.caption.monospacedDigit())
                 Text(answer.trigger.label)
+                // Kept short so a long question can't push the answer out of a short pane.
                 Text(answer.question)
+                    .lineLimit(2)
             }
             .font(.caption)
             .foregroundStyle(.secondary)
