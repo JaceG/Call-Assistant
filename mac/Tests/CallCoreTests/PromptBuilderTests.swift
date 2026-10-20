@@ -63,6 +63,25 @@ struct PromptBuilderTests {
         #expect(system.map(\.cachesForAnHour) == [false, true, false, false])
     }
 
+    @Test func filesTooBigToSendAreListedForTheTools() {
+        let big = CallFiles(files: [
+            ContextFile(path: "Site/b.js", text: "b"),
+            ContextFile(path: "Site/a.js", text: String(repeating: "x", count: 375_003)),
+        ], skipped: [])
+        let prompt = PromptBuilder(playbook: nil, callNotes: "", files: big, timeZone: Self.utc)
+            .prompt(lines: [], themSaying: nil, question: .typed("Hi?"))
+        #expect(prompt.lookup == FileLookup(files: big))
+        #expect(prompt.system[1].text.contains("search_files finds lines"))
+        #expect(prompt.system[1].text.hasSuffix("The files:\nSite/a.js\nSite/b.js"))
+        #expect(!prompt.system[1].text.contains("xxxx"))
+    }
+
+    @Test func filesSentWholeNeedNoTools() {
+        let small = CallFiles(files: [ContextFile(path: "a.txt", text: "a")], skipped: [])
+        let prompt = PromptBuilder(playbook: nil, callNotes: "", files: small).prompt(lines: [], themSaying: nil, question: .typed("Hi?"))
+        #expect(prompt.lookup == nil)
+    }
+
     @Test func noFilesMeansNoFilesBlock() {
         let system = Self.builder().prompt(lines: [], themSaying: nil, question: .typed("Hi?")).system
         #expect(!system.contains { $0.text.hasPrefix(PromptBuilder.filesHeading) })

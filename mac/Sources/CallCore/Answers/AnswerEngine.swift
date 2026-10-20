@@ -48,9 +48,15 @@ public struct Answer: Identifiable, Sendable, Equatable {
     public var state: State
     /// Seconds from the request to the first piece of text.
     public var firstTextAfter: TimeInterval?
+    /// What Claude is looking up in the files before it answers
+    /// ("Reading …"); nil once the answer's text starts.
+    public var activity: String?
+    /// The files Claude searched or read for this answer, in order.
+    public var lookups: [String]
 
     public init(id: UUID = UUID(), trigger: Trigger, question: String, askedAt: Date,
-                text: String = "", state: State = .waiting, firstTextAfter: TimeInterval? = nil) {
+                text: String = "", state: State = .waiting, firstTextAfter: TimeInterval? = nil,
+                activity: String? = nil, lookups: [String] = []) {
         self.id = id
         self.trigger = trigger
         self.question = question
@@ -58,6 +64,8 @@ public struct Answer: Identifiable, Sendable, Equatable {
         self.text = text
         self.state = state
         self.firstTextAfter = firstTextAfter
+        self.activity = activity
+        self.lookups = lookups
     }
 }
 
@@ -75,6 +83,8 @@ public final class AnswerEngine {
     public var autoAnswer = false
     public var playbook: Playbook?
     public var callNotes = ""
+    /// The folders and files picked for the call, read as text.
+    public var files = CallFiles.none
     /// Called once for each answer when it ends, however it ends.
     @ObservationIgnored public var onFinished: ((Answer) -> Void)?
 
@@ -154,6 +164,23 @@ public final class AnswerEngine {
 
     // MARK: Running answers
 
+    private var promptBuilder: PromptBuilder {
+        PromptBuilder(playbook: playbook, callNotes: callNotes, files: files)
+    }
+
+    /// Caches the instructions and files before the first question, so it's
+    /// answered as quickly as later ones. A failure only costs that speed.
+    public func warm() async {
+        guard !files.isEmpty else { return }
+        let prompt = promptBuilder.prompt(lines: lines, themSaying: nil, question: .typed(LiveSession.warmQuestion))
+        do {
+            let usage = try await provider.warm(prompt)
+            Log.session.info("warmed the cache: \(usage.cacheWriteTokens) written, \(usage.cacheReadTokens) read")
+        } catch {
+            Log.session.error("couldn't warm the cache: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     private func startNow(_ question: Question, shown: String, trigger: Answer.Trigger) {
         cancelWaiting()
         stop()
@@ -200,8 +227,7 @@ public final class AnswerEngine {
     }
 
     private func start(_ question: Question, shown: String, trigger: Answer.Trigger) {
-        let prompt = PromptBuilder(playbook: playbook, callNotes: callNotes)
-            .prompt(lines: lines, themSaying: transcript?.partial[.them], question: question)
+        let prompt = promptBuilder.prompt(lines: lines, themSaying: transcript?.partial[.them], question: question)
         let answer = Answer(trigger: trigger, question: shown, askedAt: Date())
         answers.append(answer)
         let id = answer.id
@@ -232,7 +258,11 @@ public final class AnswerEngine {
                 answers[index].firstTextAfter = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
             }
             answers[index].text += piece
+            answers[index].activity = nil
             answers[index].state = .streaming
+        case .lookingUp(let activity):
+            answers[index].activity = activity
+            answers[index].lookups.append(activity)
         case .finished:
             end(id, as: .done)
         case .declined:

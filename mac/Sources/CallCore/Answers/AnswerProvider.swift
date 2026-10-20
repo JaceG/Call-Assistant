@@ -23,11 +23,15 @@ public struct AnswerPrompt: Sendable, Equatable {
     /// Frozen chunks first, then the newest lines.
     public var transcript: [PromptBlock]
     public var question: String
+    /// Tools to search and read the picked files, when they're too big to
+    /// send whole.
+    public var lookup: FileLookup?
 
-    public init(system: [PromptBlock], transcript: [PromptBlock], question: String) {
+    public init(system: [PromptBlock], transcript: [PromptBlock], question: String, lookup: FileLookup? = nil) {
         self.system = system
         self.transcript = transcript
         self.question = question
+        self.lookup = lookup
     }
 }
 
@@ -44,11 +48,22 @@ public struct Usage: Sendable, Equatable {
         self.cacheReadTokens = cacheReadTokens
         self.cacheWriteTokens = cacheWriteTokens
     }
+
+    /// Adds another request's counts, for an answer that took several.
+    public mutating func add(_ other: Usage) {
+        inputTokens += other.inputTokens
+        outputTokens += other.outputTokens
+        cacheReadTokens += other.cacheReadTokens
+        cacheWriteTokens += other.cacheWriteTokens
+    }
 }
 
-/// What an answer stream delivers, in order: pieces of text, then one ending.
+/// What an answer stream delivers, in order: pieces of text (and, while
+/// Claude looks in the files, what it's looking up), then one ending.
 public enum AnswerEvent: Sendable, Equatable {
     case text(String)
+    /// Claude is searching or reading the picked files ("Reading …").
+    case lookingUp(String)
     case finished(stopReason: String, usage: Usage)
     /// The model declined (`stop_reason: "refusal"`), with the API's category.
     case declined(category: String?)

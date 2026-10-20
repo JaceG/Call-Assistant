@@ -64,6 +64,26 @@ struct AnswerEngineTests {
         Array(repeating: AnswerEvent.text("word "), count: pieces) + [.finished(stopReason: "end_turn", usage: Usage())]
     }
 
+    @Test func whatClaudeLooksUpShowsUntilTheTextStarts() async {
+        let provider = FakeProvider([.lookingUp("Reading Site/a.js…"), .text("Answer."), .finished(stopReason: "end_turn", usage: Usage())],
+                                    step: .milliseconds(100))
+        let engine = AnswerEngine(provider: provider)
+        engine.ask("How did you build it?", transcript: TranscriptStore())
+        #expect(await Self.eventually { engine.answers.first?.activity == "Reading Site/a.js…" })
+        #expect(await Self.eventually { engine.answers.first?.state == .done })
+        #expect(engine.answers.first?.activity == nil)
+        #expect(engine.answers.first?.lookups == ["Reading Site/a.js…"])
+    }
+
+    @Test func thePickedFilesGoWithEveryAnswer() async {
+        let provider = FakeProvider()
+        let engine = AnswerEngine(provider: provider)
+        engine.files = CallFiles(files: [ContextFile(path: "Notes/resume.md", text: "Eight years of Swift.")], skipped: [])
+        engine.ask("What's my background?", transcript: TranscriptStore())
+        #expect(await Self.eventually { engine.answers.first?.state == .done })
+        #expect(provider.prompts.first?.system.contains { $0.text.contains("Eight years of Swift.") } == true)
+    }
+
     @Test func autoAnswerWaitsForThemToPauseThenAnswers() async {
         let engine = AnswerEngine(provider: FakeProvider(), pause: .milliseconds(150))
         let transcript = TranscriptStore()

@@ -374,6 +374,8 @@ extension Probes {
                     case .text(let piece):
                         if firstText == nil { firstText = ContinuousClock.now - started }
                         text += piece
+                    case .lookingUp(let activity):
+                        print(String(format: "  %.2f s: %@", seconds(ContinuousClock.now - started), activity))
                     case .finished(let stopReason, let usage):
                         ending = "stop \(stopReason), tokens in \(usage.inputTokens) out \(usage.outputTokens) cache read \(usage.cacheReadTokens) write \(usage.cacheWriteTokens)"
                     case .declined(let category):

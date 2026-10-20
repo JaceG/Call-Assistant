@@ -14,6 +14,9 @@ public struct ClaudeProvider: AnswerProvider {
     private let effort: String
     private let thinkingOff: Bool
     private let session: URLSession
+    /// The most requests one answer makes when Claude looks in the files.
+    /// The last one asks Claude to answer with what it has.
+    private let lookupRounds: Int
 
     /// - Parameters:
     ///   - effort: "low" keeps thinking short and skips it on most simple questions.
@@ -24,22 +27,54 @@ public struct ClaudeProvider: AnswerProvider {
         model: String = defaultModel,
         effort: String = "low",
         thinkingOff: Bool = false,
-        session: URLSession = .shared
+        session: URLSession = .shared,
+        lookupRounds: Int = 4
     ) {
         self.apiKey = apiKey
         self.model = model
         self.effort = effort
         self.thinkingOff = thinkingOff
         self.session = session
+        self.lookupRounds = max(lookupRounds, 1)
     }
 
+    /// Streams the answer. When the prompt has file tools and Claude calls
+    /// them, runs them and asks again with the results, up to `lookupRounds`
+    /// requests, sending Claude's own blocks back unchanged each time.
     public func answer(_ prompt: AnswerPrompt) -> AsyncThrowingStream<AnswerEvent, Error> {
-        let request = Request(apiKey: apiKey, body: Self.requestBody(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff))
-        let session = session
+        let apiKey = apiKey, model = model, effort = effort, thinkingOff = thinkingOff, session = session, rounds = lookupRounds
         return AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await Self.stream(request, session: session) { continuation.yield($0) }
+                    // Claude's tool calls and their results so far, as messages.
+                    var turns: [[String: Any]] = []
+                    var usage = Usage()
+                    for round in 1...rounds {
+                        let body = Self.requestBody(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff,
+                                                    turns: turns, lastRound: round == rounds)
+                        let reply = try await Self.stream(Request(apiKey: apiKey, body: body), session: session) { continuation.yield($0) }
+                        usage.add(reply.usage)
+                        if let category = reply.declined {
+                            continuation.yield(.declined(category: category))
+                            break
+                        }
+                        let calls = reply.toolUses
+                        guard reply.stopReason == "tool_use", let lookup = prompt.lookup, !calls.isEmpty, round < rounds else {
+                            continuation.yield(.finished(stopReason: reply.stopReason, usage: usage))
+                            break
+                        }
+                        turns.append(["role": "assistant", "content": reply.blocks])
+                        var results: [[String: Any]] = []
+                        for call in calls {
+                            continuation.yield(.lookingUp(FileLookup.activity(name: call.name, input: call.input)))
+                            let result = lookup.run(name: call.name, input: call.input)
+                            var block: [String: Any] = ["type": "tool_result", "tool_use_id": call.id, "content": result.text]
+                            if result.isError { block["is_error"] = true }
+                            results.append(block)
+                        }
+                        // All results go back in one message, in the order of the calls.
+                        turns.append(["role": "user", "content": results])
+                    }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -91,7 +126,18 @@ public struct ClaudeProvider: AnswerProvider {
         let body: Data
     }
 
-    private static func stream(_ request: Request, session: URLSession, yield: (AnswerEvent) -> Void) async throws {
+    /// How one request ended.
+    private struct Reply {
+        var usage = Usage()
+        var stopReason = "end_turn"
+        /// Set when Claude declined, with the API's category (if any).
+        var declined: String??
+        var blocks: [[String: Any]] = []
+        var toolUses: [(id: String, name: String, input: [String: Any])] = []
+    }
+
+    /// Streams one request, passing on text and returning how it ended.
+    private static func stream(_ request: Request, session: URLSession, yield: (AnswerEvent) -> Void) async throws -> Reply {
         var urlRequest = urlRequest(apiKey: try request.apiKey(), body: request.body)
         // The longest wait allowed between two pieces of the reply.
         urlRequest.timeoutInterval = 60
@@ -114,12 +160,18 @@ public struct ClaudeProvider: AnswerProvider {
         }
 
         var parser = ServerSentEvents()
-        var ended = false
+        var reply: Reply?
         do {
             for try await line in bytes.lines {
                 for event in try parser.consume(line: line) {
-                    if case .text = event {} else { ended = true }
-                    yield(event)
+                    switch event {
+                    case .text, .lookingUp:
+                        yield(event)
+                    case .finished(let stopReason, let usage):
+                        reply = Reply(usage: usage, stopReason: stopReason)
+                    case .declined(let category):
+                        reply = Reply(usage: parser.usage, stopReason: "refusal", declined: .some(category))
+                    }
                 }
             }
         } catch let error as AnswerError {
@@ -127,7 +179,10 @@ public struct ClaudeProvider: AnswerProvider {
         } catch {
             throw mapped(error)
         }
-        guard ended else { throw AnswerError.badStream("the reply stopped before it finished") }
+        guard var reply else { throw AnswerError.badStream("the reply stopped before it finished") }
+        reply.blocks = parser.blocks
+        reply.toolUses = parser.toolUses
+        return reply
     }
 
     private static func mapped(_ error: Error) -> Error {
@@ -154,9 +209,17 @@ public struct ClaudeProvider: AnswerProvider {
 
     /// The Messages API request body: one user turn holding the transcript
     /// blocks and then the question, under the system blocks.
-    static func requestBody(for prompt: AnswerPrompt, model: String, effort: String, thinkingOff: Bool) -> Data {
+    ///
+    /// - Parameters:
+    ///   - turns: Claude's tool calls and their results so far, sent after the
+    ///     user turn.
+    ///   - lastRound: no more tool calls; Claude answers with what it has.
+    static func requestBody(for prompt: AnswerPrompt, model: String, effort: String, thinkingOff: Bool,
+                            turns: [[String: Any]] = [], lastRound: Bool = false) -> Data {
         var body = body(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff)
         body["stream"] = true
+        if !turns.isEmpty { body["messages"] = (body["messages"] as? [[String: Any]] ?? []) + turns }
+        if lastRound, prompt.lookup != nil { body["tool_choice"] = ["type": "none"] }
         return encoded(body)
     }
 
@@ -191,6 +254,8 @@ public struct ClaudeProvider: AnswerProvider {
             ]],
         ]
         if thinkingOff { body["thinking"] = ["type": "between_tools"] }
+        // Tools come first in what's cached, so they're sent the same way every time.
+        if prompt.lookup != nil { body["tools"] = FileLookup.definitions }
         return body
     }
 

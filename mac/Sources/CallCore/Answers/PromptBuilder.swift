@@ -62,7 +62,8 @@ public struct PromptBuilder: Sendable {
     ///   - lines: the call's finished lines, in the order they were recorded.
     ///   - themSaying: their words still being recognized, if any.
     public func prompt(lines: [Utterance], themSaying: String?, question: Question) -> AnswerPrompt {
-        AnswerPrompt(system: system(), transcript: transcript(lines, themSaying: themSaying), question: text(for: question))
+        AnswerPrompt(system: system(), transcript: transcript(lines, themSaying: themSaying), question: text(for: question),
+                     lookup: !files.isEmpty && files.mode == .lookUp ? FileLookup(files: files) : nil)
     }
 
     /// Base, files, playbook, notes. The files come before the notes so that
@@ -83,9 +84,21 @@ public struct PromptBuilder: Sendable {
         return blocks
     }
 
-    /// Every file's text, each in a `<file path="…">` element.
+    /// Every file's text, each in a `<file path="…">` element; or, when
+    /// they're too big for that, the list of paths and how to look in them.
     static func filesText(_ files: CallFiles) -> String {
         var text = "\(filesHeading)\n\nJace picked these files for this call."
+        if files.mode == .lookUp {
+            text += """
+                 They're too long to include here, so look in them with the tools: search_files finds lines, \
+                read_file reads a file. Look things up only when the question is about these files, and keep it \
+                to a few lookups, since Jace is waiting on the call. Then reply in the same two parts.
+
+                The files:
+
+                """
+            return text + files.files.map(\.path).joined(separator: "\n")
+        }
         for file in files.files {
             text += "\n\n<file path=\"\(file.path)\">\n\(file.text)\(file.text.hasSuffix("\n") ? "" : "\n")</file>"
         }

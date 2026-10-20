@@ -91,4 +91,42 @@ struct ServerSentEventsTests {
             try parser.consume(line: "data: {not json")
         }
     }
+
+    /// A reply that calls a tool: the blocks are rebuilt exactly, so they can
+    /// be sent back (thinking with its signature, the tool's input as JSON).
+    @Test func aToolCallsBlocksAreRebuiltFromTheirDeltas() throws {
+        var parser = ServerSentEvents()
+        for line in [
+            Self.start,
+            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}"#,
+            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"EqQBCkYIARgC"}}"#,
+            #"data: {"type":"content_block_stop","index":0}"#,
+            #"data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_01","name":"search_files","input":{}}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"query\": \"echo"}}"#,
+            #"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":" cancel\"}"}}"#,
+            #"data: {"type":"content_block_stop","index":1}"#,
+            #"data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"output_tokens":40}}"#,
+            Self.stop,
+        ] { _ = try parser.consume(line: line) }
+
+        #expect(parser.stopReason == "tool_use")
+        #expect(parser.blocks.count == 2)
+        #expect(NSDictionary(dictionary: parser.blocks[0]).isEqual(to: ["type": "thinking", "thinking": "", "signature": "EqQBCkYIARgC"]))
+        #expect(NSDictionary(dictionary: parser.blocks[1]).isEqual(to: [
+            "type": "tool_use", "id": "toolu_01", "name": "search_files", "input": ["query": "echo cancel"],
+        ]))
+        let calls = parser.toolUses
+        #expect(calls.map(\.id) == ["toolu_01"])
+        #expect(calls.first?.input["query"] as? String == "echo cancel")
+    }
+
+    @Test func textIsKeptInItsBlockToo() throws {
+        var parser = ServerSentEvents()
+        for line in [
+            #"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Let me "}}"#,
+            #"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"check."}}"#,
+        ] { _ = try parser.consume(line: line) }
+        #expect(parser.blocks.first?["text"] as? String == "Let me check.")
+    }
 }
