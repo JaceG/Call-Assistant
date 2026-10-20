@@ -12,4 +12,9 @@ public enum Paths {
     public static var sessionsDirectory: URL {
         supportDirectory.appendingPathComponent("Sessions", isDirectory: true)
     }
+
+    /// One Markdown file of instructions per kind of call.
+    public static var playbooksDirectory: URL {
+        supportDirectory.appendingPathComponent("Playbooks", isDirectory: true)
+    }
 }

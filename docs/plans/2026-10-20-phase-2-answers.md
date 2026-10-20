@@ -185,7 +185,7 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   }
   public struct PromptBuilder: Sendable {
       public init(playbook: Playbook?, callNotes: String, chunkSize: Int = 10)
-      public func prompt(lines: [Utterance], themSaying: String?, question: Question, now: Date) -> AnswerPrompt
+      public func prompt(lines: [Utterance], themSaying: String?, question: Question) -> AnswerPrompt
   }
   public enum Question: Sendable, Equatable { case detected(String), answerNow, typed(String) }
   ```
@@ -217,6 +217,12 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - `General.md` being created only in an empty folder
   - files sorted by name
 - **Risks:** a playbook file that isn't UTF-8 is skipped and logged, never a crash.
+- **Result (2026-10-20):**
+  - `swift test`: 50 pass (14 new: 5 playbook tests, 9 prompt tests).
+  - **Interface change:** `prompt(…)` has no `now:` parameter, because nothing needed it.
+  - **The starter `General.md`** holds only instructions: "Keep answers short and concrete. Lead with the answer." How to write playbooks goes in the README, so Claude never reads how-to text as instructions.
+  - **The base prompt** also tells Claude not to invent facts about Jace when the playbook and notes don't cover them. It suggests how he could answer instead.
+  - **The probe** got `--transcript <call.md>`, `--playbook <name>` and `--notes "<text>"`.
 
 ### Task 3: Prompt caching, measured
 - **Intent:** a late-call answer re-sends thousands of transcript tokens. Caching makes it cheaper and should shorten the time to the first text.
@@ -226,6 +232,20 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - The second run shows `cache read > 0`.
   - Record both runs' first-text times and the cache read/write tokens.
 - **Risks:** the minimum is 512 tokens, so a short transcript shows `cache write 0`. That's expected. Test with a long one.
+- **Result (2026-10-20):**
+  - **Already in place:** caching needed no new code. The `cache_control` placement from Task 1 does it.
+  - **Test transcript:** made up, 120 lines and 2,222 words, kept in the scratchpad.
+  - **Question:** "What did they ask about caching, and how should I follow up?"
+
+    | Run | First text | Cache write | Cache read | Uncached input |
+    |---|---|---|---|---|
+    | 1 | 1.47 s | 5,289 | 0 | 21 |
+    | 2 | 0.88 s | 0 | 5,289 | 21 |
+    | 3 | 1.05 s | 0 | 5,289 | 21 |
+    | 13 lines later (133 lines) | 0.69 s | 349 | 5,289 | 125 |
+
+  - **The last row is the in-call case:** the breakpoint moved to the new chunk, and the earlier entry was still found. So late-call answers pay full price only for the newest lines.
+  - **Answers:** each was about 290–340 output tokens and took about 4 s in total, a little longer than the prompt asks for. Two answers also commented on the made-up transcript repeating itself. I'm leaving the prompt as it is until Jace has seen real answers (Task 6).
 
 ### Task 4: Question detector (test first)
 - **Intent:** the automatic trigger. Measured 2026-10-20: Apple's transcriber puts "?" on questions. Every played test question in the 9 test files had one, and 4 of 12 Them lines in the real call did.

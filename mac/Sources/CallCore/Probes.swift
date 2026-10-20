@@ -37,7 +37,7 @@ public enum Probes {
             return await transcribe(file: URL(fileURLWithPath: value))
         case "--probe-answer":
             guard let value else {
-                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N]")
+                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N] [--transcript <call.md>] [--playbook <name>] [--notes \"<text>\"]")
                 return 64
             }
             func option(_ name: String) -> String? { arguments.drop { $0 != name }.dropFirst().first }
@@ -45,7 +45,10 @@ public enum Probes {
                 question: value,
                 effort: option("--effort") ?? "low",
                 thinkingOff: arguments.contains("--thinking-off"),
-                runs: option("--runs").flatMap(Int.init) ?? 1
+                runs: option("--runs").flatMap(Int.init) ?? 1,
+                transcript: option("--transcript").map { URL(fileURLWithPath: $0) },
+                playbookName: option("--playbook"),
+                notes: option("--notes") ?? ""
             )
         default:
             print("Unknown probe \(flag)")
@@ -271,7 +274,10 @@ extension Probes {
     /// Asks Claude `question` `runs` times and prints, for each run, how long
     /// the first piece of text took, the total time, the token counts and the
     /// answer. Never prints the key. Returns 0 if every run returned text.
-    static func answer(question: String, effort: String, thinkingOff: Bool, runs: Int) async -> Int32 {
+    static func answer(
+        question: String, effort: String, thinkingOff: Bool, runs: Int,
+        transcript: URL? = nil, playbookName: String? = nil, notes: String = ""
+    ) async -> Int32 {
         // Read the key once, timed on its own, so a Keychain prompt doesn't
         // count toward the first run's answer time.
         let keyStarted = ContinuousClock.now
@@ -284,11 +290,25 @@ extension Probes {
         }
         print("key read from the Keychain in \(ContinuousClock.now - keyStarted)")
         let provider = ClaudeProvider(apiKey: { key }, effort: effort, thinkingOff: thinkingOff)
-        let prompt = AnswerPrompt(
-            system: [PromptBlock(text: "You help Jace answer questions live during a call. Answer briefly, so he can say it out loud.")],
-            transcript: [],
-            question: question
-        )
+        var lines: [Utterance] = []
+        if let transcript {
+            guard let text = try? String(contentsOf: transcript, encoding: .utf8) else {
+                print("Couldn't read \(transcript.path)")
+                return 66
+            }
+            lines = transcriptLines(in: text)
+            print("transcript: \(lines.count) lines from \(transcript.lastPathComponent)")
+        }
+        var playbook: Playbook?
+        if let playbookName {
+            playbook = (try? PlaybookLibrary().load())?.first { $0.name == playbookName }
+            guard playbook != nil else {
+                print("No playbook named \"\(playbookName)\" in \(Paths.playbooksDirectory.path)")
+                return 66
+            }
+        }
+        let prompt = PromptBuilder(playbook: playbook, callNotes: notes)
+            .prompt(lines: lines, themSaying: nil, question: .typed(question))
         print("model \(ClaudeProvider.defaultModel), effort \(effort), thinking \(thinkingOff ? "between_tools (off)" : "adaptive")")
         var firstTextTimes: [Double] = []
         var failures = 0
@@ -325,5 +345,20 @@ extension Probes {
                          sorted[sorted.count / 2], sorted.count, sorted.first!, sorted.last!))
         }
         return failures == 0 ? 0 : 1
+    }
+}
+
+extension Probes {
+    /// The lines of a saved call file ("**[14:13:25] Them:** text"), dated
+    /// today. Answers and other text in the file are skipped.
+    static func transcriptLines(in text: String) -> [Utterance] {
+        let pattern = /^\*\*\[(\d\d):(\d\d):(\d\d)\] (Me|Them):\*\* (.+)$/
+        let today = Calendar.current.startOfDay(for: Date())
+        return text.split(separator: "\n").compactMap { line -> Utterance? in
+            guard let match = try? pattern.wholeMatch(in: String(line)),
+                  let h = Double(match.1), let m = Double(match.2), let s = Double(match.3) else { return nil }
+            let start = today + h * 3600 + m * 60 + s
+            return Utterance(speaker: match.4 == "Me" ? .me : .them, text: String(match.5), start: start, end: start)
+        }
     }
 }
