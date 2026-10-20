@@ -50,6 +50,12 @@ public enum Probes {
                 playbookName: option("--playbook"),
                 notes: option("--notes") ?? ""
             )
+        case "--probe-detect":
+            guard let value, let text = try? String(contentsOf: URL(fileURLWithPath: value), encoding: .utf8) else {
+                print("Usage: --probe-detect <call.md>")
+                return 64
+            }
+            return detect(in: text)
         default:
             print("Unknown probe \(flag)")
             return 64
@@ -360,5 +366,24 @@ extension Probes {
             let start = today + h * 3600 + m * 60 + s
             return Utterance(speaker: match.4 == "Me" ? .me : .them, text: String(match.5), start: start, end: start)
         }
+    }
+}
+
+extension Probes {
+    /// Replays a saved call through the question detector, with no API call,
+    /// and prints each line Auto-Answer would answer.
+    static func detect(in text: String) -> Int32 {
+        let lines = transcriptLines(in: text)
+        let detector = QuestionDetector()
+        var picked = 0
+        for line in lines {
+            guard let question = detector.question(in: line) else { continue }
+            picked += 1
+            print("[\(line.start.clockTime())] would answer: \(question)")
+        }
+        let them = lines.filter { $0.speaker == .them }.count
+        let marked = lines.filter { $0.speaker == .them && $0.text.contains("?") }.count
+        print("RESULT \(picked) of \(them) Them lines picked (\(marked) contain \"?\"), \(lines.count) lines in all")
+        return 0
     }
 }

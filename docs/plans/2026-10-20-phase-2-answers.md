@@ -267,6 +267,12 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
 - **Check:**
   - `swift test` covers: a real question, a tag question, a short "Really?", a request with no "?", Me lines ignored, and two questions in one line.
   - `--probe-detect` on Jace's real call (`2026-10-20 1004 call.md`) prints the lines it picks. Report how many, with the text left out of the report.
+- **Result (2026-10-20):**
+  - `swift test`: 58 pass (8 new). The tests and the detector were written in the same step, so to prove the tests can fail I broke the detector twice on purpose: a 1-word minimum, then the tag check switched off. Each was caught by its test (2 failures each), and the detector was put back.
+  - **`--probe-detect` on the played-question test calls** (`0950`, `1011`): 2 of 2 Them lines picked. Both are the played interview questions.
+  - **On Jace's real call** (`1004`): 2 of 12 Them lines picked. 4 had a "?", and 2 of those were left out as short or tag questions.
+    - Both picks are casual questions about the test itself, not ones Jace needs help answering.
+    - So a "?" alone can't tell small talk from a real question. That went to Jace before Task 5.
 
 ### Task 5: Answer engine + session wiring (test first, fake provider)
 - **Intent:** the logic between the triggers and the window: one answer at a time, what interrupts what, and answers saved in the call file.
