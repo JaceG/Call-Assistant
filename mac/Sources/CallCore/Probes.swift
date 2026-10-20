@@ -51,6 +51,13 @@ public enum Probes {
                 playbookName: option("--playbook"),
                 notes: option("--notes") ?? ""
             )
+        case "--probe-files":
+            let picks = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
+            guard !picks.isEmpty else {
+                print("Usage: --probe-files <folder or file>...")
+                return 64
+            }
+            return await files(picks.map { URL(fileURLWithPath: $0) })
         case "--probe-detect":
             guard let value, let text = try? String(contentsOf: URL(fileURLWithPath: value), encoding: .utf8) else {
                 print("Usage: --probe-detect <call.md>")
@@ -403,5 +410,27 @@ extension Probes {
         let marked = lines.filter { $0.speaker == .them && $0.text.contains("?") }.count
         print("RESULT \(picked) of \(them) Them lines picked (\(marked) contain \"?\"), \(lines.count) lines in all")
         return 0
+    }
+}
+
+extension Probes {
+    /// Reads the picked folders and files as a call would and prints what
+    /// Claude would get: the counts, the size estimate, the mode, the largest
+    /// files and what was skipped. Makes no API call.
+    static func files(_ picks: [URL]) async -> Int32 {
+        let started = ContinuousClock.now
+        let files = await FileCollector().collect(picks)
+        print("read in \(ContinuousClock.now - started)")
+        print("\(files.files.count) files, \(files.byteCount) bytes of text, about \(files.estimatedTokens) tokens → \(files.mode == .whole ? "whole" : "look-up")")
+        print("largest:")
+        for file in files.files.sorted(by: { $0.text.utf8.count > $1.text.utf8.count }).prefix(10) {
+            print("  \(file.text.utf8.count) \(file.path)")
+        }
+        let byReason = Dictionary(grouping: files.skipped, by: \.reason.label)
+        print("skipped \(files.skipped.count):")
+        for (reason, skipped) in byReason.sorted(by: { $0.key < $1.key }) {
+            print("  \(skipped.count) \(reason): \(skipped.prefix(5).map(\.path).joined(separator: ", "))\(skipped.count > 5 ? ", …" : "")")
+        }
+        return files.isEmpty ? 1 : 0
     }
 }
