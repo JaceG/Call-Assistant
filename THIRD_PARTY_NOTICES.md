@@ -32,6 +32,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## FluidAudio
+## WebRTC audio processing
 
-Used as a Swift package dependency (not copied): https://github.com/FluidInference/FluidAudio, Apache License 2.0.
+- Source: freedesktop's webrtc-audio-processing, v2.1 (https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing), WebRTC's audio processing module (AEC3 echo canceller).
+- Used in: built from source by `scripts/build_webrtc_apm.sh` and linked into the Mac app; `mac/Sources/CEchoCanceller` calls it.
+- License: BSD-3-Clause, Copyright (c) 2011, Google Inc. The full text is in the source's `COPYING` file.
+
+## Abseil
+
+- Source: abseil-cpp 20240722.0 (https://github.com/abseil/abseil-cpp), fetched by the WebRTC build above and linked with it.
+- License: Apache License 2.0.

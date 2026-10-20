@@ -67,3 +67,8 @@ private/
 
 # Mac app build output
 mac/dist/
+
+# WebRTC audio processing build output (scripts/build_webrtc_apm.sh)
+mac/Vendor/build/
+mac/Vendor/webrtc-apm/
+mac/Vendor/WebRTCAPM.xcframework/
