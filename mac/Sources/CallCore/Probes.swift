@@ -38,7 +38,7 @@ public enum Probes {
             return await transcribe(file: URL(fileURLWithPath: value))
         case "--probe-answer":
             guard let value else {
-                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N] [--transcript <call.md>] [--playbook <name>] [--notes \"<text>\"]")
+                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N] [--transcript <call.md>] [--playbook <name>] [--notes \"<text>\"] [--files <folder or file>]... [--warm]")
                 return 64
             }
             func option(_ name: String) -> String? { arguments.drop { $0 != name }.dropFirst().first }
@@ -49,7 +49,10 @@ public enum Probes {
                 runs: option("--runs").flatMap(Int.init) ?? 1,
                 transcript: option("--transcript").map { URL(fileURLWithPath: $0) },
                 playbookName: option("--playbook"),
-                notes: option("--notes") ?? ""
+                notes: option("--notes") ?? "",
+                files: arguments.indices.filter { arguments[$0] == "--files" && $0 + 1 < arguments.count }
+                    .map { URL(fileURLWithPath: arguments[$0 + 1]) },
+                warm: arguments.contains("--warm")
             )
         case "--probe-files":
             let picks = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
@@ -306,7 +309,8 @@ extension Probes {
     /// answer. Never prints the key. Returns 0 if every run returned text.
     static func answer(
         question: String, effort: String, thinkingOff: Bool, runs: Int,
-        transcript: URL? = nil, playbookName: String? = nil, notes: String = ""
+        transcript: URL? = nil, playbookName: String? = nil, notes: String = "",
+        files picks: [URL] = [], warm: Bool = false
     ) async -> Int32 {
         // Read the key once, timed on its own, so a Keychain prompt doesn't
         // count toward the first run's answer time.
@@ -337,10 +341,26 @@ extension Probes {
                 return 66
             }
         }
-        let prompt = PromptBuilder(playbook: playbook, callNotes: notes)
-            .prompt(lines: lines, themSaying: nil,
-                    question: CommandLine.arguments.contains("--detected") ? .detected(question) : .typed(question))
+        var files = CallFiles.none
+        if !picks.isEmpty {
+            files = await FileCollector().collect(picks)
+            print("files: \(files.files.count), about \(files.estimatedTokens) tokens → \(files.mode == .whole ? "whole" : "look-up")")
+        }
+        let builder = PromptBuilder(playbook: playbook, callNotes: notes, files: files)
+        let prompt = builder.prompt(lines: lines, themSaying: nil,
+                                    question: CommandLine.arguments.contains("--detected") ? .detected(question) : .typed(question))
         print("model \(ClaudeProvider.defaultModel), effort \(effort), thinking \(thinkingOff ? "between_tools (off)" : "adaptive")")
+        func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
+        if warm {
+            let started = ContinuousClock.now
+            do {
+                let usage = try await provider.warm(builder.prompt(lines: lines, themSaying: nil, question: .typed(LiveSession.warmQuestion)))
+                print(String(format: "warm: %.2f s, tokens in %d, cache read %d write %d", seconds(ContinuousClock.now - started),
+                             usage.inputTokens, usage.cacheReadTokens, usage.cacheWriteTokens))
+            } catch {
+                print("warm: ERROR \(error.localizedDescription)")
+            }
+        }
         var firstTextTimes: [Double] = []
         var failures = 0
         for run in 1...max(runs, 1) {
@@ -364,7 +384,6 @@ extension Probes {
                 ending = "ERROR \(error.localizedDescription)"
             }
             let total = ContinuousClock.now - started
-            func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
             if let firstText { firstTextTimes.append(seconds(firstText)) } else { failures += 1 }
             print(String(format: "run %d: first text %@, total %.2f s, %@", run,
                          firstText.map { String(format: "%.2f s", seconds($0)) } ?? "-", seconds(total), ending))

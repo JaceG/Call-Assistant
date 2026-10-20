@@ -49,20 +49,50 @@ public struct ClaudeProvider: AnswerProvider {
         }
     }
 
+    public func warm(_ prompt: AnswerPrompt) async throws -> Usage {
+        var urlRequest = try Self.urlRequest(apiKey: apiKey(), body: Self.warmBody(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff))
+        // Writing a large cache takes a while; nothing streams back meanwhile.
+        urlRequest.timeoutInterval = 120
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch {
+            throw Self.mapped(error)
+        }
+        let http = response as? HTTPURLResponse
+        guard let http, http.statusCode == 200 else {
+            throw Self.error(status: http?.statusCode ?? 0, body: data, retryAfter: http?.value(forHTTPHeaderField: "retry-after"))
+        }
+        let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let usage = object?["usage"] as? [String: Any]
+        return Usage(
+            inputTokens: usage?["input_tokens"] as? Int ?? 0,
+            outputTokens: usage?["output_tokens"] as? Int ?? 0,
+            cacheReadTokens: usage?["cache_read_input_tokens"] as? Int ?? 0,
+            cacheWriteTokens: usage?["cache_creation_input_tokens"] as? Int ?? 0
+        )
+    }
+
+    static func urlRequest(apiKey: String, body: Data) -> URLRequest {
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
+        // Needed for `fallbacks: "default"`.
+        urlRequest.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
+        urlRequest.httpBody = body
+        return urlRequest
+    }
+
     private struct Request: Sendable {
         let apiKey: @Sendable () throws -> String
         let body: Data
     }
 
     private static func stream(_ request: Request, session: URLSession, yield: (AnswerEvent) -> Void) async throws {
-        var urlRequest = URLRequest(url: endpoint)
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue(try request.apiKey(), forHTTPHeaderField: "x-api-key")
-        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-        urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
-        // Needed for `fallbacks: "default"`.
-        urlRequest.setValue("server-side-fallback-2026-07-01", forHTTPHeaderField: "anthropic-beta")
-        urlRequest.httpBody = request.body
+        var urlRequest = urlRequest(apiKey: try request.apiKey(), body: request.body)
         // The longest wait allowed between two pieces of the reply.
         urlRequest.timeoutInterval = 60
 
@@ -125,15 +155,32 @@ public struct ClaudeProvider: AnswerProvider {
     /// The Messages API request body: one user turn holding the transcript
     /// blocks and then the question, under the system blocks.
     static func requestBody(for prompt: AnswerPrompt, model: String, effort: String, thinkingOff: Bool) -> Data {
+        var body = body(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff)
+        body["stream"] = true
+        return encoded(body)
+    }
+
+    /// A request that only writes the cache: `max_tokens` 0 (the API then
+    /// stops after reading the prompt) and not streamed, which `max_tokens` 0
+    /// doesn't allow. Everything else matches a real answer, since thinking
+    /// and effort are part of what's cached.
+    static func warmBody(for prompt: AnswerPrompt, model: String, effort: String, thinkingOff: Bool) -> Data {
+        var body = body(for: prompt, model: model, effort: effort, thinkingOff: thinkingOff)
+        body["max_tokens"] = 0
+        return encoded(body)
+    }
+
+    private static func body(for prompt: AnswerPrompt, model: String, effort: String, thinkingOff: Bool) -> [String: Any] {
         func block(_ block: PromptBlock) -> [String: Any] {
             var json: [String: Any] = ["type": "text", "text": block.text]
-            if block.cacheBreakpoint { json["cache_control"] = ["type": "ephemeral"] }
+            if block.cacheBreakpoint {
+                json["cache_control"] = block.cachesForAnHour ? ["type": "ephemeral", "ttl": "1h"] : ["type": "ephemeral"]
+            }
             return json
         }
         var body: [String: Any] = [
             "model": model,
             "max_tokens": maxTokens,
-            "stream": true,
             "output_config": ["effort": effort],
             // On a decline in some categories, the API retries on an older model.
             "fallbacks": "default",
@@ -144,7 +191,11 @@ public struct ClaudeProvider: AnswerProvider {
             ]],
         ]
         if thinkingOff { body["thinking"] = ["type": "between_tools"] }
-        // Sorted keys: the same prompt always produces the same bytes.
-        return (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data()
+        return body
+    }
+
+    /// Sorted keys: the same prompt always produces the same bytes.
+    private static func encoded(_ body: [String: Any]) -> Data {
+        (try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys])) ?? Data()
     }
 }

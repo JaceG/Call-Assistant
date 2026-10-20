@@ -36,19 +36,24 @@ public struct PromptBuilder: Sendable {
         If it's unclear what they asked, the quick answer is a short, natural question to ask them back.
         When Jace types a question to you himself, use the same two parts, with the direct answer first.
 
-        Follow the playbook and the notes for this call when they're given.
+        Follow the playbook and the notes for this call when they're given. When files for this call are \
+        given and a question is about them, answer from what the files say.
         """
 
     public static let transcriptHeading = "Transcript so far:\n"
 
+    public static let filesHeading = "# Files for this call"
+
     private let playbook: Playbook?
     private let callNotes: String
+    private let files: CallFiles
     private let chunkSize: Int
     private let timeZone: TimeZone
 
-    public init(playbook: Playbook?, callNotes: String, chunkSize: Int = 10, timeZone: TimeZone = .current) {
+    public init(playbook: Playbook?, callNotes: String, files: CallFiles = .none, chunkSize: Int = 10, timeZone: TimeZone = .current) {
         self.playbook = playbook
         self.callNotes = callNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.files = files
         self.chunkSize = max(chunkSize, 1)
         self.timeZone = timeZone
     }
@@ -60,8 +65,14 @@ public struct PromptBuilder: Sendable {
         AnswerPrompt(system: system(), transcript: transcript(lines, themSaying: themSaying), question: text(for: question))
     }
 
+    /// Base, files, playbook, notes. The files come before the notes so that
+    /// editing the notes mid-call keeps the files cached; their breakpoint
+    /// lasts an hour, since answers can be more than five minutes apart.
     private func system() -> [PromptBlock] {
         var blocks = [PromptBlock(text: Self.basePrompt)]
+        if !files.isEmpty {
+            blocks.append(PromptBlock(text: Self.filesText(files), cacheBreakpoint: true, cachesForAnHour: true))
+        }
         if let playbook, !playbook.instructions.isEmpty {
             blocks.append(PromptBlock(text: "# Playbook: \(playbook.name)\n\n\(playbook.instructions)"))
         }
@@ -70,6 +81,15 @@ public struct PromptBuilder: Sendable {
         }
         blocks[blocks.count - 1].cacheBreakpoint = true
         return blocks
+    }
+
+    /// Every file's text, each in a `<file path="…">` element.
+    static func filesText(_ files: CallFiles) -> String {
+        var text = "\(filesHeading)\n\nJace picked these files for this call."
+        for file in files.files {
+            text += "\n\n<file path=\"\(file.path)\">\n\(file.text)\(file.text.hasSuffix("\n") ? "" : "\n")</file>"
+        }
+        return text
     }
 
     private func transcript(_ lines: [Utterance], themSaying: String?) -> [PromptBlock] {

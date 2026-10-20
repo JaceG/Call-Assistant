@@ -45,6 +45,29 @@ struct ClaudeRequestTests {
         #expect((system[1]["cache_control"] as? [String: Any])?["type"] as? String == "ephemeral")
     }
 
+    @Test func anHourLongBreakpointAsksForAnHourLongCache() throws {
+        let prompt = AnswerPrompt(system: [
+            PromptBlock(text: "Base."),
+            PromptBlock(text: "# Files for this call", cacheBreakpoint: true, cachesForAnHour: true),
+            PromptBlock(text: "# Notes for this call", cacheBreakpoint: true),
+        ], transcript: [], question: "Hi?")
+        let system = try #require(try Self.body(prompt: prompt)["system"] as? [[String: Any]])
+        #expect(system[1]["cache_control"] as? [String: String] == ["type": "ephemeral", "ttl": "1h"])
+        #expect(system[2]["cache_control"] as? [String: String] == ["type": "ephemeral"])
+    }
+
+    @Test func aWarmRequestIsTheSameButStopsBeforeAnswering() throws {
+        let data = ClaudeProvider.warmBody(for: Self.prompt, model: "claude-sonnet-5-5", effort: "low", thinkingOff: false)
+        var warm = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        var real = try Self.body()
+        #expect(warm["max_tokens"] as? Int == 0)
+        #expect(warm["stream"] == nil)
+        warm["max_tokens"] = nil
+        real["max_tokens"] = nil
+        real["stream"] = nil
+        #expect(NSDictionary(dictionary: warm).isEqual(to: real))
+    }
+
     @Test func oneUserTurnHoldsTheTranscriptThenTheQuestion() throws {
         let messages = try #require(try Self.body()["messages"] as? [[String: Any]])
         #expect(messages.count == 1)

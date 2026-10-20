@@ -5,10 +5,14 @@ import Foundation
 public struct PromptBlock: Sendable, Equatable {
     public var text: String
     public var cacheBreakpoint: Bool
+    /// Keep the cache for an hour rather than five minutes, for text that
+    /// stays the same all call (the files). Only with `cacheBreakpoint`.
+    public var cachesForAnHour: Bool
 
-    public init(text: String, cacheBreakpoint: Bool = false) {
+    public init(text: String, cacheBreakpoint: Bool = false, cachesForAnHour: Bool = false) {
         self.text = text
         self.cacheBreakpoint = cacheBreakpoint
+        self.cachesForAnHour = cachesForAnHour
     }
 }
 
@@ -80,4 +84,11 @@ public enum AnswerError: LocalizedError, Equatable {
 /// later. Cancelling the task that reads the stream cancels the request.
 public protocol AnswerProvider: Sendable {
     func answer(_ prompt: AnswerPrompt) -> AsyncThrowingStream<AnswerEvent, Error>
+    /// Caches the prompt's system text without answering, so the next answer
+    /// starts sooner. Providers without a cache do nothing.
+    func warm(_ prompt: AnswerPrompt) async throws -> Usage
+}
+
+extension AnswerProvider {
+    public func warm(_ prompt: AnswerPrompt) async throws -> Usage { Usage() }
 }

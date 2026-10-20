@@ -63,9 +63,10 @@ public struct CallFiles: Sendable, Equatable {
 
     /// The most estimated tokens sent whole with every answer.
     public static let wholeBudget = 150_000
-    /// Bytes of text per token, for the estimate. Code runs about 3–4; the
-    /// lower figure keeps the estimate on the high side.
-    static let bytesPerToken = 3
+    /// Tokens per byte of text, for the estimate: measured 2026-10-20, this
+    /// repository's 355 KB of code and Markdown came to 143,219 tokens, about
+    /// 2.5 bytes per token.
+    static let tokensPerByte = 0.4
 
     public static let none = CallFiles(files: [], skipped: [])
 
@@ -82,7 +83,7 @@ public struct CallFiles: Sendable, Equatable {
 
     public var isEmpty: Bool { files.isEmpty }
 
-    public var estimatedTokens: Int { byteCount / Self.bytesPerToken }
+    public var estimatedTokens: Int { Int(Double(byteCount) * Self.tokensPerByte) }
 
     public var mode: Mode { estimatedTokens <= Self.wholeBudget ? .whole : .lookUp }
 }

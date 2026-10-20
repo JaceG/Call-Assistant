@@ -169,10 +169,11 @@ struct FileCollectorTests {
     // MARK: Size
 
     @Test func theModeFollowsTheEstimate() {
-        let fits = CallFiles(files: [ContextFile(path: "a", text: String(repeating: "x", count: CallFiles.wholeBudget * 3))], skipped: [])
-        #expect(fits.estimatedTokens == CallFiles.wholeBudget)
+        // About 2.5 bytes per token.
+        let fits = CallFiles(files: [ContextFile(path: "a", text: String(repeating: "x", count: 375_000))], skipped: [])
+        #expect(fits.estimatedTokens == 150_000)
         #expect(fits.mode == .whole)
-        let over = CallFiles(files: [ContextFile(path: "a", text: String(repeating: "x", count: CallFiles.wholeBudget * 3 + 3))], skipped: [])
+        let over = CallFiles(files: [ContextFile(path: "a", text: String(repeating: "x", count: 375_003))], skipped: [])
         #expect(over.mode == .lookUp)
     }
 }

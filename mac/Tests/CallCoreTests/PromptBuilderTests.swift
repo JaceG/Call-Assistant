@@ -36,6 +36,39 @@ struct PromptBuilderTests {
         #expect(system.map(\.cacheBreakpoint) == [true])
     }
 
+    @Test func filesGoAfterTheBaseAndBeforeThePlaybookWithAnHourLongBreakpoint() {
+        let files = CallFiles(files: [
+            ContextFile(path: "App/b.swift", text: "struct B {}\n"),
+            ContextFile(path: "App/a.swift", text: "struct A {}"),
+        ], skipped: [])
+        let system = PromptBuilder(playbook: Self.playbook, callNotes: "Call with Dana.", files: files, timeZone: Self.utc)
+            .prompt(lines: [], themSaying: nil, question: .typed("Hi?")).system
+        #expect(system.count == 4)
+        #expect(system[1].text == """
+            # Files for this call
+
+            Jace picked these files for this call.
+
+            <file path="App/a.swift">
+            struct A {}
+            </file>
+
+            <file path="App/b.swift">
+            struct B {}
+            </file>
+            """)
+        #expect(system[2].text.hasPrefix("# Playbook: Interview"))
+        #expect(system[3].text.hasPrefix("# Notes for this call"))
+        #expect(system.map(\.cacheBreakpoint) == [false, true, false, true])
+        #expect(system.map(\.cachesForAnHour) == [false, true, false, false])
+    }
+
+    @Test func noFilesMeansNoFilesBlock() {
+        let system = Self.builder().prompt(lines: [], themSaying: nil, question: .typed("Hi?")).system
+        #expect(!system.contains { $0.text.hasPrefix(PromptBuilder.filesHeading) })
+        #expect(PromptBuilder.basePrompt.contains("answer from what the files say"))
+    }
+
     @Test func theBasePromptNamesTheSidesAndAsksForMeaningOverWords() {
         let base = PromptBuilder.basePrompt
         #expect(base.contains("\"Me\" is Jace"))

@@ -53,6 +53,9 @@ public final class LiveSession {
         answers.onFinished = { [weak self] answer in self?.save(answer) }
     }
 
+    /// The stand-in question a warm request carries; it's read, never answered.
+    public static let warmQuestion = "(The call is starting.)"
+
     public var isRunning: Bool {
         switch state {
         case .preparing, .listening, .stopping: true
