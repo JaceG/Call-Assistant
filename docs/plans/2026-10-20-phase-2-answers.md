@@ -23,6 +23,7 @@
   - The key starts with `sk-ant-` but not `sk-ant-api`, so never check a key's format by its prefix.
 - **New views:** "Answers in a new file". `AnswersPane.swift` holds the answers list, an answer's view and the Ask field. The playbook picker and the notes box stay inside `TranscriptWindow.swift`.
 - **Hotkey:** ⌃⌥A.
+- **Small talk:** Auto-Answer answers every question it spots, casual ones included ("Answer every question", chosen after Task 4 showed both picks on his real call were casual). Jace switches Auto-Answer off during small talk.
 - **License:** Jace doesn't mind. Nothing changes (a GPL-3.0 LICENSE is added only if GPL code is ever copied in).
 
 ## Claude API choices (from the `claude-api` skill, read 2026-10-20)
@@ -334,6 +335,20 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
     - `failed` and `declined` states
     - answers in the rewritten file in time order
   - A live probe: `--probe-live 40 --auto-answer` while `afplay` plays a `say` clip of "Can you walk me through how you would cache API responses in a mobile app?". The log shows an automatic answer. Record the time from the Them line to the first answer text.
+- **Result (2026-10-20):**
+  - **Built:** in `8b998bb`. `swift test`: 71 pass (13 new: 10 engine, 3 file), stable over 4 runs, with no build warnings.
+  - **Live run** (`--probe-live 45 --auto-answer`, speakers, Jace quiet): two `say` questions were played 15 s apart.
+
+    | Question (as heard) | First text after the request | After their line ended |
+    |---|---|---|
+    | "…how you would cash API responses in a mobile app?" | 1.29 s | 3.39 s |
+    | "And what happens when the cash data is stale and the user is offline?" | 0.81 s | 3.17 s |
+
+    - The ~3.2–3.4 s after their line is mostly the 1.5 s pause plus recognition finishing the line. The request itself took 0.8–1.3 s.
+    - Claude read the recognition slip "cash" as "cache" both times (the first answer says so).
+    - The call file has both answers as quote blocks, each right after the line it answered.
+  - **The probe printed `RESULT … FAIL`.** That's Phase 1's rule (both sides must speak), and Jace stayed quiet as asked, so it's expected here.
+  - **Answer length:** the answers were longer than the prompt asks. The second had 4 bullets, against a limit of 3. That's left for Jace to judge in the window (Task 6).
 
 ### Task 6: The window — answers, Ask field, playbook, notes, hotkey ⛳ CHECKPOINT (Jace)
 - **Intent:** everything Jace sees in Phase 2. It runs `ui-consistency`: the checklist below (from `finding-patterns`, 2026-10-20), then `implementing`, then `verifying` by an agent that didn't write the code.
