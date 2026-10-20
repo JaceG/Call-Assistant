@@ -81,7 +81,8 @@ private struct AnswerView: View {
             }
             switch answer.state {
             case .waiting:
-                Text("Thinking…")
+                // What Claude is looking up in the files, if anything.
+                Text(answer.activity ?? "Thinking…")
                     .italic()
                     .foregroundStyle(.secondary)
             case .streaming, .done:

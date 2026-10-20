@@ -16,12 +16,19 @@ struct TranscriptWindow: View {
     /// The chosen playbook's name; "" for none.
     static let playbookKey = "playbook"
     static let playbookByDefault = "General"
+    /// The folders and files picked for Claude, one path per line.
+    static let filesKey = "files"
 
     @AppStorage(keepOnTopKey) private var keepOnTop = keepOnTopByDefault
     @AppStorage(autoAnswerKey) private var autoAnswer = autoAnswerByDefault
     @AppStorage(playbookKey) private var playbookName = playbookByDefault
+    @AppStorage(filesKey) private var filePaths = ""
     @State private var playbooks: [Playbook] = []
     @State private var showingNotes = false
+    @State private var showingFiles = false
+    @State private var readingFiles = false
+    /// Counts reads of the picks, so an older, slower read can't replace a newer one.
+    @State private var filesRead = 0
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     /// False once the user scrolls up, so new lines don't pull them back down.
     @State private var followsNewLines = true
@@ -48,8 +55,10 @@ struct TranscriptWindow: View {
             session.answers.autoAnswer = autoAnswer
             reloadPlaybooks()
         }
+        .task { await readFiles() }
         .onChange(of: autoAnswer) { session.answers.autoAnswer = autoAnswer }
         .onChange(of: playbookName) { applyPlaybook() }
+        .onChange(of: filePaths) { Task { await readFiles() } }
         // Playbook files added or edited in Finder show up when you come back to the app.
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             reloadPlaybooks()
@@ -101,7 +110,15 @@ struct TranscriptWindow: View {
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
             Button {
-                Task { isListening ? await session.stop() : await session.start() }
+                Task {
+                    if isListening {
+                        await session.stop()
+                    } else {
+                        // Files may have changed since they were picked.
+                        await readFiles()
+                        await session.start()
+                    }
+                }
             } label: {
                 if isListening {
                     Label("Stop", systemImage: "stop.circle")
@@ -159,6 +176,17 @@ struct TranscriptWindow: View {
             }
 
             Button {
+                showingFiles.toggle()
+            } label: {
+                Label("Files", systemImage: picks.isEmpty ? "books.vertical" : "books.vertical.fill")
+            }
+            .help("Choose folders and files Claude can use on this call")
+            .popover(isPresented: $showingFiles) {
+                FilesPopover(picks: picks, files: session.answers.files, isReading: readingFiles,
+                             add: addFiles, remove: removePick)
+            }
+
+            Button {
                 session.answers.answerNow(transcript: session.store)
             } label: {
                 Label("Answer Now", systemImage: "sparkles")
@@ -172,6 +200,41 @@ struct TranscriptWindow: View {
             .toggleStyle(.button)
             .help(autoAnswer ? "Stop answering their questions automatically" : "Answer their questions automatically")
         }
+    }
+
+    // MARK: Files
+
+    private var picks: [URL] {
+        filePaths.split(separator: "\n").map { URL(fileURLWithPath: String($0)) }
+    }
+
+    /// Reads the picks and hands them to the session.
+    private func readFiles() async {
+        filesRead += 1
+        let read = filesRead
+        readingFiles = true
+        let files = await FileCollector().collect(picks)
+        guard read == filesRead else { return }
+        session.useFiles(files)
+        readingFiles = false
+    }
+
+    private func addFiles() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Choose folders and files Claude can use on calls."
+        // Modal, so it shows above this window when it floats.
+        guard panel.runModal() == .OK else { return }
+        let paths = picks.map(\.path) + panel.urls.map(\.path).filter { !picks.map(\.path).contains($0) }
+        filePaths = paths.joined(separator: "\n")
+        showingFiles = true
+    }
+
+    private func removePick(_ pick: URL) {
+        filePaths = picks.filter { $0.path != pick.path }.map(\.path).joined(separator: "\n")
     }
 
     private var callNotes: Binding<String> {

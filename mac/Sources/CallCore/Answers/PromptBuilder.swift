@@ -92,7 +92,8 @@ public struct PromptBuilder: Sendable {
             text += """
                  They're too long to include here, so look in them with the tools: search_files finds lines, \
                 read_file reads a file. Look things up only when the question is about these files, and keep it \
-                to a few lookups, since Jace is waiting on the call. Then reply in the same two parts.
+                to a few lookups, since Jace is waiting on the call. When you have what you need, reply in the same \
+                two parts as always, starting with one short sentence he can say right away.
 
                 The files:
 

@@ -5,7 +5,7 @@ import os
 
 /// One call: captures the mic (me) and the system audio (them), transcribes
 /// each on its own, and fills the transcript store and the session file. The
-/// window drives it today; the phone server and headless mode will later.
+/// window drives it.
 @MainActor
 @Observable
 public final class LiveSession {
@@ -70,6 +70,14 @@ public final class LiveSession {
         case .preparing, .stopping: return false
         case .idle, .listening, .failed: return !store.utterances.isEmpty || !store.partial.isEmpty
         }
+    }
+
+    /// The folders and files picked for answers. During a call, the new set
+    /// is cached at once.
+    public func useFiles(_ files: CallFiles) {
+        guard files != answers.files else { return }
+        answers.files = files
+        if state == .listening { Task { await answers.warm() } }
     }
 
     public func start() async {
@@ -141,6 +149,8 @@ public final class LiveSession {
             }
         }
         state = .listening
+        // Caches the files now rather than on the first question.
+        Task { await answers.warm() }
         Log.session.info("listening; transcript at \(self.sessionFile?.path ?? "-", privacy: .public)")
     }
 
