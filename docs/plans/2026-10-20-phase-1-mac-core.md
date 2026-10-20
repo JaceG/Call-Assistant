@@ -281,6 +281,36 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - The utterance list: time, speaker ("Me" / "Them"), text. It scrolls to the newest line unless the user has scrolled up.
   - Each speaker's current partial line, in a secondary style.
   - "Open Sessions Folder" (Finder) and "Copy Transcript".
+- **UI checklist** (`ui-consistency`, read 2026-10-20). This is the transcript window against *first window*: nothing to follow, since the project's only UI is a placeholder `Text`, so 0 members of 1 candidate. The shape was agreed with Jace in words on 2026-10-20 (Toolbar · Transcript · Status bar). There's no theme and no `DESIGN.md`, and the value scale can't be derived from the one literal, so values are SwiftUI's system styles and default spacing.
+  - [ ] **Window holder:** the existing `Window("Call Assistant", id: "transcript")`, minimum 420 × 300. (The project's only literal, kept.)
+  - [ ] **Float on top:** the window floats above other windows while pinned. A pin toggle in the toolbar shows `pin.fill` while pinned and `pin` when not, and starts pinned. (As agreed: floating, toggleable.)
+  - [ ] **Toolbar** (SwiftUI `.toolbar`, as agreed; no project piece exists):
+    - Start/Stop: `Label("Start", systemImage: "record.circle")` ↔ `Label("Stop", systemImage: "stop.circle")`, disabled while preparing or stopping.
+    - Copy Transcript (`doc.on.doc`), disabled while there are no lines.
+    - Open Sessions Folder (`folder`).
+  - [ ] **Transcript:** `ScrollView` + `LazyVStack(alignment: .leading)` of transcript lines, newest at the bottom. It follows new lines unless the user has scrolled up. (As agreed.)
+  - [ ] **Transcript line:** a new view in `TranscriptWindow.swift` (agreed), used for finished and in-progress lines.
+    - Time: `.caption.monospacedDigit()`, `.secondary`.
+    - Speaker: semibold body, Them in `.tint`, Me in `.secondary`.
+    - Text: `.body`, selectable.
+    - (System styles.)
+  - [ ] **In-progress line, one per side:** the same view with no time, text `.secondary` and italic. (As agreed.)
+  - [ ] **Empty states:** "Press Start when your call begins." before Start, and "Listening. Lines appear as people speak." while listening with no lines. Centred, `.secondary`. (As agreed; new copy.)
+  - [ ] **Status bar:** a new view in the same file (agreed), at the bottom, `.callout`.
+    - "Ready"
+    - "Checking the speech model…"
+    - "Downloading the speech model" with a `ProgressView(value:)`
+    - "Listening" with a red dot
+    - "Stopping…"
+    - On failure, the error text in `.red`
+    - (System colours.)
+  - [ ] **Spacing:** SwiftUI's defaults (`.padding()`, default stack spacing). No numeric literals besides the window minimum. (Scale not derivable.)
+  - [ ] **What the user sees happen:**
+    - Start disables itself while preparing.
+    - A failure leaves Start enabled.
+    - Copy puts the plain-text transcript on the clipboard.
+    - Open Sessions Folder creates the folder if needed and opens it in Finder.
+  - [ ] **Not copied:** nothing, since there's no reference. The placeholder `Text` is replaced.
 - **Check:**
   - Build and launch, press Start, `afplay /tmp/ca-test.aiff`, and confirm by screenshot that a Them line appears.
   - The `ui-consistency:verifying` report has no open findings.
