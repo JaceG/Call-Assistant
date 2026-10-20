@@ -10,11 +10,11 @@
 **Spec:** `private/HANDOFF.md` (gitignored: decisions, requirements) and `cluely-alternative-fact-check.md` (research).
 
 ## Out of scope (later phases), but don't block them
+Phase order (Jace, 2026-10-20): 1 Mac core → 2 Claude answers + playbooks → 3 phone server + iPhone app → 4 screen capture + call recording (Mac only) → 5 codebase index → 6 headless → 7 Tailscale/AWS. The iPhone app doesn't capture its own screen or record calls.
 - Claude answers and playbooks (Phase 2): `CallCore` will hold the answer engine, so keep the transcript store observable and the session API small.
-- Screen capture and call recording (Phase 3).
-- The codebase index (Phase 4).
-- Headless mode and the phone server (Phase 5): the app must stay able to run without its window, so all session logic lives in `CallCore`, not in views.
-- iPhone app (Phase 6), remote access (Phase 7).
+- The phone server and iPhone app (Phase 3), and headless mode (Phase 6): all session logic lives in `CallCore`, not in views, so a server and a windowless mode can drive it.
+- Screen capture and call recording on the Mac (Phase 4).
+- The codebase index (Phase 5). Remote access (Phase 7).
 - WhisperKit: Parakeet v2 is English only. WhisperKit (multilingual) can be added behind the same `TranscriptionBackend` protocol later.
 - Echo filtering by text similarity: see Risks in Task 5.
 
