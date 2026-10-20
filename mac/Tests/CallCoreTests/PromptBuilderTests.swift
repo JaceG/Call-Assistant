@@ -43,12 +43,17 @@ struct PromptBuilderTests {
         #expect(base.contains("sound-alike"))
     }
 
-    /// Jace, after the first window test (2026-10-20): "I need the very first
-    /// thing I read to be the response I need to give to the other person."
-    @Test func theBasePromptPutsTheWordsToSayFirst() {
+    /// Jace, after the window tests (2026-10-20): "I need the very first thing I
+    /// read to be the response I need to give to the other person", then "I need
+    /// a quick concise answer, and then an elaborated answer that picks up after
+    /// it naturally. I need them clearly separated but nothing in between them".
+    @Test func theBasePromptAsksForAQuickAnswerThenALongerOne() {
         let base = PromptBuilder.basePrompt
-        #expect(base.contains("First, the exact words for Jace to say back to them"))
-        #expect(base.contains("Begin your reply with these words"))
+        #expect(base.contains("exactly two parts and nothing else"))
+        #expect(base.contains("The quick answer: one short sentence"))
+        #expect(base.contains("Begin your reply with it"))
+        #expect(base.contains("carry on naturally from the quick answer"))
+        #expect(base.contains("no bullets"))
         #expect(base.contains("never mention them"))
     }
 

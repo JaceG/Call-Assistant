@@ -76,15 +76,8 @@ private struct AnswerView: View {
             .foregroundStyle(.secondary)
 
             if !answer.text.isEmpty {
-                let parts = Self.parts(of: answer.text)
-                // The words to say come first, in the window's own emphasis.
-                Text(Self.inlineMarkdown(parts.say))
-                    .fontWeight(.semibold)
+                Text(Self.styled(answer.text))
                     .textSelection(.enabled)
-                if let details = parts.details {
-                    Text(Self.inlineMarkdown(details))
-                        .textSelection(.enabled)
-                }
             }
             switch answer.state {
             case .waiting:
@@ -108,13 +101,20 @@ private struct AnswerView: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// The words to say (the first paragraph; all of the text until a blank
-    /// line arrives) and the details after the first blank line.
-    private static func parts(of text: String) -> (say: String, details: String?) {
+    /// The quick answer (the first paragraph; all of the text until a blank
+    /// line arrives) in the window's own emphasis, then one blank line, then
+    /// the longer answer. One text, so one selection copies the whole answer.
+    private static func styled(_ text: String) -> AttributedString {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let gap = text.range(of: "\n\n") else { return (text, nil) }
-        let details = text[gap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
-        return (String(text[..<gap.lowerBound]), details.isEmpty ? nil : details)
+        guard let gap = text.range(of: "\n\n") else { return quick(text) }
+        let longer = text[gap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return quick(String(text[..<gap.lowerBound])) + AttributedString("\n\n") + inlineMarkdown(longer)
+    }
+
+    private static func quick(_ text: String) -> AttributedString {
+        var quick = inlineMarkdown(text)
+        quick.font = .body.weight(.semibold)
+        return quick
     }
 
     /// Bold, italics, code and links; anything else shows as written.
