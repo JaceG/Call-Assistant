@@ -18,6 +18,9 @@ CONFIG="${CONFIG:-release}"
 APP_NAME="CallAssistant"
 APP_DIR="$MAC_DIR/dist/$APP_NAME.app"
 
+# WebRTC's echo canceller (built once; skipped when already built).
+"$ROOT_DIR/scripts/build_webrtc_apm.sh"
+
 echo "=== Building $APP_NAME ($CONFIG) ==="
 cd "$MAC_DIR"
 swift build -c "$CONFIG"
