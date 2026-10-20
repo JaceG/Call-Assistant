@@ -22,6 +22,8 @@ public enum Probes {
         switch flag {
         case "--probe-audio":
             return await audio(seconds: value.flatMap(Int.init) ?? 15)
+        case "--probe-live":
+            return await live(seconds: value.flatMap(Int.init) ?? 30)
         case "--probe-transcribe":
             guard let value else {
                 print("Usage: --probe-transcribe <audio file>")
@@ -136,7 +138,9 @@ extension Probes {
                 onPartial: { if !$0.isEmpty { print("~ \($0)") } },
                 onFinal: { segment in
                     finals.withLock { $0.append(segment.text) }
-                    print(String(format: "FINAL [%.2f-%.2f s] %@", segment.start, segment.end, segment.text))
+                    print(String(format: "FINAL [%.2f-%.2f s] %@",
+                                 segment.start.timeIntervalSince(transcribeStarted),
+                                 segment.end.timeIntervalSince(transcribeStarted), segment.text))
                 }
             )
         } catch {
@@ -147,6 +151,48 @@ extension Probes {
         print(String(format: "transcribed in %.1f s", Date().timeIntervalSince(transcribeStarted)))
         print("RESULT \(text.isEmpty ? "FAIL (no final text)" : "PASS"): \(text)")
         return text.isEmpty ? 1 : 0
+    }
+}
+
+extension Probes {
+    /// Runs a whole call without the window for `seconds`: both channels,
+    /// transcribed and saved. Prints each finished utterance as it arrives.
+    /// Returns 0 if both sides produced at least one.
+    @MainActor
+    static func live(seconds: Int) async -> Int32 {
+        let session = LiveSession()
+        let clock = { (date: Date) in date.clockTime(in: .current) }
+        await session.start()
+        if case .failed(let message) = session.state {
+            print("failed to start: \(message)")
+            return 2
+        }
+        print("listening for \(seconds) s, transcript: \(session.sessionFile?.path ?? "-")")
+
+        var printed = Set<UUID>()
+        func printNew() {
+            for utterance in session.store.utterances where !printed.contains(utterance.id) {
+                printed.insert(utterance.id)
+                print("[\(clock(utterance.start))] \(utterance.speaker.label): \(utterance.text)")
+            }
+        }
+        let end = Date() + Double(seconds)
+        while Date() < end {
+            try? await Task.sleep(for: .milliseconds(250))
+            printNew()
+        }
+        print("stopping…")
+        await session.stop()
+        try? await Task.sleep(for: .milliseconds(300))  // the last results hop to the main actor
+        printNew()
+
+        let counts = Dictionary(grouping: session.store.utterances, by: \.speaker).mapValues(\.count)
+        let me = counts[.me] ?? 0
+        let them = counts[.them] ?? 0
+        let lines = (try? String(contentsOf: session.sessionFile!, encoding: .utf8))?
+            .split(separator: "\n").filter { $0.hasPrefix("**[") }.count ?? 0
+        print("RESULT Me=\(me) Them=\(them), \(lines) lines in the file => \(me > 0 && them > 0 ? "PASS" : "FAIL")")
+        return me > 0 && them > 0 ? 0 : 1
     }
 }
 

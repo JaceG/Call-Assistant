@@ -51,6 +51,8 @@ public final class AppleSpeechTranscriber: LiveTranscriber, @unchecked Sendable 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         try await analyzer.prepareToAnalyze(in: format)
 
+        // Result times count from the first buffer; note when that arrived.
+        let firstBufferAt = OSAllocatedUnfairLock<Date?>(initialState: nil)
         let results = transcriber.results
         let resultsTask = Task {
             for try await result in results {
@@ -58,7 +60,12 @@ public final class AppleSpeechTranscriber: LiveTranscriber, @unchecked Sendable 
                 if result.isFinal {
                     onPartial("")
                     guard !text.isEmpty else { continue }
-                    onFinal(TranscribedSegment(text: text, start: result.range.start.seconds, end: result.range.end.seconds))
+                    let origin = firstBufferAt.withLock { $0 } ?? Date()
+                    onFinal(TranscribedSegment(
+                        text: text,
+                        start: origin + result.range.start.seconds,
+                        end: origin + result.range.end.seconds
+                    ))
                 } else {
                     onPartial(text)
                 }
@@ -71,6 +78,7 @@ public final class AppleSpeechTranscriber: LiveTranscriber, @unchecked Sendable 
         let converter = AudioBufferConverter(to: format)
         do {
             for await buffer in audio {
+                firstBufferAt.withLock { if $0 == nil { $0 = Date() } }
                 if let converted = try converter.convert(buffer) {
                     inputContinuation.yield(AnalyzerInput(buffer: converted))
                 }

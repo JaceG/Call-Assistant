@@ -1,14 +1,14 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-/// A stretch of speech the transcriber has settled on. Times are seconds from
-/// the start of the audio stream.
+/// A stretch of speech the transcriber has settled on. Times are clock times,
+/// counted from when the stream's first buffer reached the transcriber.
 public struct TranscribedSegment: Sendable, Equatable {
     public let text: String
-    public let start: TimeInterval
-    public let end: TimeInterval
+    public let start: Date
+    public let end: Date
 
-    public init(text: String, start: TimeInterval, end: TimeInterval) {
+    public init(text: String, start: Date, end: Date) {
         self.text = text
         self.start = start
         self.end = end
