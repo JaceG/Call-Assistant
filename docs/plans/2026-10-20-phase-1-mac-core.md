@@ -321,9 +321,34 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - The `ui-consistency:verifying` report has no open findings.
 - **Checkpoint:** Jace runs it on a real call, with headphones and then without, and reports what he saw. Record his report as he gives it.
 
+- **Result (2026-10-20):**
+  - **Built:** in `1ea1bfe`, with fixes in `faa2430`.
+  - **In the running app:**
+    - Start → "Listening", and the button becomes Stop.
+    - Played questions appear as Them, and Jace's spoken answers as Me, with no echo lines.
+    - Stop → "Ready". The transcript is kept and the held Me lines are flushed.
+    - Keep on Top switches the window layer between 19 and 0.
+  - **Independent check (`ui-consistency:verifying`, 2 rounds):**
+    - Its blind proof caught the planted deviation.
+    - Round 1 found 7 issues (status wording, empty state while preparing, tooltip name, VoiceOver grouping, divider, duplicated setting key, the spacing line). All were fixed, and round 2 confirmed them.
+  - **Still open, in the checker's words:** "after a download finishes, nothing changes the status until listening starts. So on a first run the bar shows 'Downloading the speech model…' at 100% while the microphone permission prompt is up."
+  - **Not checked:** following new lines vs. stopping when scrolled up, the in-progress line, statuses other than Ready and Listening, and dark mode.
+  - **Left as decided, for Jace:**
+    - A model download can't be cancelled.
+    - Start clears the previous call from the window (it's still saved).
+    - There's no Start/Stop shortcut.
+    - A failure to create the Sessions folder is silent.
+  - **Checkpoint 3 (a real call) is pending.**
+
 ### Task 7: Docs
 - **Files:** `README.md`, `THIRD_PARTY_NOTICES.md` (check that it's complete), and `private/HANDOFF.md` (status, what Phase 1 measured).
 - **Check:** the README build steps work from a clean clone of the repo (`git clone` into the scratchpad → run the script).
+
+- **Result (2026-10-20):**
+  - `README.md` written.
+  - `THIRD_PARTY_NOTICES.md` covers OpenOats, WebRTC and abseil.
+  - `private/HANDOFF.md` has the Phase 1 state.
+  - **Clean-clone check passed:** `git clone` into the scratchpad, then `scripts/build_mac_app.sh`, which downloaded and built WebRTC v2.1 and abseil, then built, bundled and signed the app (exit 0).
 
 ## Checkpoints
 1. **After Task 2:** permissions plus both channels on macOS 27. If the process tap fails, the whole plan changes. ScreenCaptureKit audio is the fallback; Muesli uses it.
