@@ -224,6 +224,15 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - **Echo:** on speakers the mic also hears "Them", so `Me:` duplicates appear. Use headphones or `echoCancellation = true`. OpenOats' `AcousticEchoFilter` (text-similarity dedupe) is out of scope; note how often duplicates show up for Phase 2.
   - Two `SpeechAnalyzer`s at once: check that both produce results and note the CPU use.
 
+- **Result (checkpoint 2, 2026-10-20):**
+  - **Without echo cancellation:** Jace's answers came through as Me lines, but on speakers every Them line also appeared as a Me duplicate.
+  - **With echo cancellation on, the first try failed.** Voice processing makes the mic deliver 9 identical channels, and AVAudioConverter turned those into silence. Fixed in `adfb743` by taking channel 0.
+  - **With the fix:**
+    - Jace's answers came through.
+    - The first played question leaked into Me as a fragment; the second was fully removed.
+    - The call audio was captured at about a third of its usual level (peak ~0.28 vs 0.69-0.81), so voice processing turns the other side down even at minimum ducking.
+  - **Recognition errors seen:** sound-alikes ("cash" for cache, "rights" for writes, "weights" for waits).
+
 ### Task 6: Transcript window ⛳ CHECKPOINT (real call)
 - **Intent:** the UI for Phase 1. Run `ui-consistency:finding-patterns` first; this is the project's first page, so expect platform conventions (HIG) to settle most choices, and say so. Then build the window, then `ui-consistency:verifying` by a separate agent.
 - **Files:** `mac/Sources/CallAssistant/TranscriptWindow.swift` and `CallAssistantApp.swift`.
