@@ -272,7 +272,18 @@ extension Probes {
     /// the first piece of text took, the total time, the token counts and the
     /// answer. Never prints the key. Returns 0 if every run returned text.
     static func answer(question: String, effort: String, thinkingOff: Bool, runs: Int) async -> Int32 {
-        let provider = ClaudeProvider(effort: effort, thinkingOff: thinkingOff)
+        // Read the key once, timed on its own, so a Keychain prompt doesn't
+        // count toward the first run's answer time.
+        let keyStarted = ContinuousClock.now
+        let key: String
+        do {
+            key = try APIKeyStore.read()
+        } catch {
+            print("RESULT no key: \(error.localizedDescription)")
+            return 2
+        }
+        print("key read from the Keychain in \(ContinuousClock.now - keyStarted)")
+        let provider = ClaudeProvider(apiKey: { key }, effort: effort, thinkingOff: thinkingOff)
         let prompt = AnswerPrompt(
             system: [PromptBlock(text: "You help Jace answer questions live during a call. Answer briefly, so he can say it out loud.")],
             transcript: [],

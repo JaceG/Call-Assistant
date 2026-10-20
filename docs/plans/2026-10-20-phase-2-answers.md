@@ -152,6 +152,26 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
   - **The Keychain prompt** may come back after each rebuild. "Always Allow" is tied to the app's code signature, and the signature stays the same across rebuilds, so I expect it to hold, but that hasn't been tested. If it does come back, re-create the item with `-T` for the app path. That needs Jace, because only he types the key.
   - **Never log the key** or the request headers.
   - **A guess:** `URLSession.bytes` may buffer small chunks. If the first text shows up much later than the server sends it (compare with `curl -N`), switch to a `URLSessionDataDelegate`.
+- **Result (checkpoint 1, 2026-10-20):**
+  - **Built:** in `68fb369`. 36 tests pass (12 new).
+  - **Keychain:** Jace allowed the prompt on the first run, and later runs read the key in 0.007–0.009 s with no prompt, including after two rebuilds. So "Always Allow" holds across rebuilds (measured).
+  - **The question** in every run: "In one sentence, what is a mutex?". Same prompt each time, 52 tokens in, ~57 out.
+  - **Time to the first answer text:**
+
+    | Setting | Runs | Median | Min | Max |
+    |---|---|---|---|---|
+    | Adaptive thinking, effort `low` | 20 | **0.88 s** | 0.76 s | 4.48 s |
+    | Thinking off (`between_tools`), effort `low` | 11 | 2.94 s | 1.42 s | 6.10 s |
+
+    The last round alternated the two settings, so both ran under the same conditions:
+    - adaptive: 0.96, 2.99, 1.41, then 1.03, 0.89, 0.97
+    - off: 2.85, 3.44, 2.53, then 2.94, 1.42, 1.53
+  - **Decision:** adaptive at `low` stays the default; `--thinking-off` stays a probe option.
+  - **Answers read the same.** The thinking-off answers were a little shorter.
+  - **The first run's 59.3 s included the Keychain prompt.** The probe now reads the key before timing.
+  - **Two slow runs, 4.48 s and 5.68 s,** were each the first answer of their process. Opening the connection early took 0.23–0.28 s and didn't change the next answers, and a later cold run took 0.84 s. So the slow runs look like API-side variation, not connection setup. The warm-up code was removed, since nothing showed it helping.
+  - **Stream buffering:** no sign of it. Text arrives 0.3–0.4 s before the end of a ~57-token answer.
+  - **No key in any log** (grep for `sk-ant` over the probe logs: 0 files).
 
 ### Task 2: Playbooks, call notes, the prompt (test first)
 - **Intent:** the text Claude receives. The playbook and the notes steer the answer, and the transcript gives it context. This is Jace's requirement 5.
