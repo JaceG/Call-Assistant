@@ -1,6 +1,7 @@
 // Adapted from OpenOats (https://github.com/yazinsai/OpenOats, commit ea405d8,
 // OpenOats/Sources/OpenOats/Audio/MicCapture.swift), MIT License: see
-// THIRD_PARTY_NOTICES.md. Unchanged apart from this header.
+// THIRD_PARTY_NOTICES.md. Changes: with echo cancellation on, sets other-audio
+// ducking to its minimum level so the call isn't turned down.
 
 @preconcurrency import AVFoundation
 import Accelerate
@@ -84,7 +85,11 @@ final class MicCapture: @unchecked Sendable {
             if echoCancellation {
                 do {
                     try inputNode.setVoiceProcessingEnabled(true)
-                    Log.mic.info("Voice processing (AEC) enabled")
+                    // Turn other audio (the call) down as little as possible while
+                    // voice processing runs. macOS's default ducks it noticeably.
+                    inputNode.voiceProcessingOtherAudioDuckingConfiguration =
+                        AVAudioVoiceProcessingOtherAudioDuckingConfiguration(enableAdvancedDucking: false, duckingLevel: .min)
+                    Log.mic.info("Voice processing (AEC) enabled, ducking at minimum")
                 } catch {
                     Log.mic.error("Failed to enable voice processing: \(error, privacy: .public)")
                 }

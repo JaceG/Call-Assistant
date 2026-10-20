@@ -23,7 +23,7 @@ public enum Probes {
         case "--probe-audio":
             return await audio(seconds: value.flatMap(Int.init) ?? 15)
         case "--probe-live":
-            return await live(seconds: value.flatMap(Int.init) ?? 30)
+            return await live(seconds: value.flatMap(Int.init) ?? 30, echoCancellation: arguments.contains("--aec"))
         case "--probe-transcribe":
             guard let value else {
                 print("Usage: --probe-transcribe <audio file>")
@@ -159,8 +159,10 @@ extension Probes {
     /// transcribed and saved. Prints each finished utterance as it arrives.
     /// Returns 0 if both sides produced at least one.
     @MainActor
-    static func live(seconds: Int) async -> Int32 {
+    static func live(seconds: Int, echoCancellation: Bool = false) async -> Int32 {
         let session = LiveSession()
+        session.echoCancellation = echoCancellation
+        print("echo cancellation: \(echoCancellation ? "on" : "off")")
         let clock = { (date: Date) in date.clockTime(in: .current) }
         await session.start()
         if case .failed(let message) = session.state {
