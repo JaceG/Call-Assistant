@@ -76,8 +76,15 @@ private struct AnswerView: View {
             .foregroundStyle(.secondary)
 
             if !answer.text.isEmpty {
-                Text(Self.inlineMarkdown(answer.text))
+                let parts = Self.parts(of: answer.text)
+                // The words to say come first, in the window's own emphasis.
+                Text(Self.inlineMarkdown(parts.say))
+                    .fontWeight(.semibold)
                     .textSelection(.enabled)
+                if let details = parts.details {
+                    Text(Self.inlineMarkdown(details))
+                        .textSelection(.enabled)
+                }
             }
             switch answer.state {
             case .waiting:
@@ -99,6 +106,15 @@ private struct AnswerView: View {
         }
         // One answer reads as one item: "10:41:09 Auto How do you cache? Serve the cached copy…".
         .accessibilityElement(children: .combine)
+    }
+
+    /// The words to say (the first paragraph; all of the text until a blank
+    /// line arrives) and the details after the first blank line.
+    private static func parts(of text: String) -> (say: String, details: String?) {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let gap = text.range(of: "\n\n") else { return (text, nil) }
+        let details = text[gap.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (String(text[..<gap.lowerBound]), details.isEmpty ? nil : details)
     }
 
     /// Bold, italics, code and links; anything else shows as written.

@@ -331,7 +331,8 @@ extension Probes {
             }
         }
         let prompt = PromptBuilder(playbook: playbook, callNotes: notes)
-            .prompt(lines: lines, themSaying: nil, question: .typed(question))
+            .prompt(lines: lines, themSaying: nil,
+                    question: CommandLine.arguments.contains("--detected") ? .detected(question) : .typed(question))
         print("model \(ClaudeProvider.defaultModel), effort \(effort), thinking \(thinkingOff ? "between_tools (off)" : "adaptive")")
         var firstTextTimes: [Double] = []
         var failures = 0

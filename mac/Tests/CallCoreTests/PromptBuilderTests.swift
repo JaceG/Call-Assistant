@@ -43,6 +43,15 @@ struct PromptBuilderTests {
         #expect(base.contains("sound-alike"))
     }
 
+    /// Jace, after the first window test (2026-10-20): "I need the very first
+    /// thing I read to be the response I need to give to the other person."
+    @Test func theBasePromptPutsTheWordsToSayFirst() {
+        let base = PromptBuilder.basePrompt
+        #expect(base.contains("First, the exact words for Jace to say back to them"))
+        #expect(base.contains("Begin your reply with these words"))
+        #expect(base.contains("never mention them"))
+    }
+
     // MARK: Transcript
 
     @Test func fullChunksAreFrozenAndTheLastFullOneCarriesTheBreakpoint() {
@@ -89,8 +98,8 @@ struct PromptBuilderTests {
     @Test func eachTriggerAsksInItsOwnWords() {
         let builder = Self.builder()
         #expect(builder.prompt(lines: [], themSaying: nil, question: .typed("What is a mutex?")).question == "What is a mutex?")
-        #expect(builder.prompt(lines: [], themSaying: nil, question: .answerNow).question == "Help me respond to what they just said.")
+        #expect(builder.prompt(lines: [], themSaying: nil, question: .answerNow).question == "What should I say back to what they just said?")
         #expect(builder.prompt(lines: [], themSaying: nil, question: .detected("How do you cache?")).question
-            == "They just asked: \"How do you cache?\"\nHelp me answer it.")
+            == "They just asked: \"How do you cache?\"\nWhat should I say?")
     }
 }
