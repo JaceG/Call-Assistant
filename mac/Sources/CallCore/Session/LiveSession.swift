@@ -141,6 +141,12 @@ public final class LiveSession {
         // The last results hop to the main actor after the channels end.
         try? await Task.sleep(for: .milliseconds(200))
         releaseHeldLines(all: true)
+        // Lines were saved as each finished; put the file in time order.
+        do {
+            try writer?.rewrite(store.utterances)
+        } catch {
+            Log.session.error("couldn't put the transcript in order: \(error.localizedDescription, privacy: .public)")
+        }
         mic = nil
         system = nil
         writer?.close()

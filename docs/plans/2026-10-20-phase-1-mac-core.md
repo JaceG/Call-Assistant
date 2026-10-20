@@ -338,7 +338,11 @@ Each task ends with a commit (auto-commit is on; push only when Jace asks).
     - Start clears the previous call from the window (it's still saved).
     - There's no Start/Stop shortcut.
     - A failure to create the Sessions folder is silent.
-  - **Checkpoint 3 (a real call) is pending.**
+  - **Checkpoint 3 (2026-10-20): passed.** Jace's first real call, about 45 s with another person, on speakers.
+    - Jace: "it looks like it worked well". The transcript had 12 Them lines and 16 Me lines.
+    - Jace asked the other person to talk over him, and both sides came out as separate lines with none of their words in his. So echo cancelling held up during double talk on speakers.
+    - Recognition slip: "phone" was heard as "home" (Jace).
+    - The saved file was out of time order in 6 places. Lines are saved as they finish, and Me lines wait 3 s for the echo check. Fixed: Stop now rewrites the file in time order (`SessionWriter.rewrite`, atomic). A test covers it, and a live run afterwards showed no out-of-order lines.
 
 ### Task 7: Docs
 - **Files:** `README.md`, `THIRD_PARTY_NOTICES.md` (check that it's complete), and `private/HANDOFF.md` (status, what Phase 1 measured).

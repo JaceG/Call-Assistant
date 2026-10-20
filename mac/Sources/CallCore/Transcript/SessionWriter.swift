@@ -2,10 +2,13 @@ import Foundation
 import os
 
 /// Saves one call's transcript as a Markdown file, adding each utterance as it
-/// arrives so nothing is lost if the app quits mid-call.
+/// arrives so nothing is lost if the app quits mid-call. Lines finish out of
+/// time order (each side has its own recognizer), so `rewrite` puts the whole
+/// file in order at the end.
 public final class SessionWriter: @unchecked Sendable {
     public let fileURL: URL
     private let timeZone: TimeZone
+    private let header: String
     /// Guards the file handle; appends can come from either channel.
     private let handle: OSAllocatedUnfairLock<FileHandle?>
 
@@ -38,6 +41,7 @@ public final class SessionWriter: @unchecked Sendable {
 
         self.fileURL = url
         self.timeZone = timeZone
+        self.header = header
         self.handle = OSAllocatedUnfairLock(uncheckedState: fileHandle)
     }
 
@@ -47,11 +51,29 @@ public final class SessionWriter: @unchecked Sendable {
 
     /// Writes "**[HH:mm:ss] Them:** text". The file holds it when this returns.
     public func append(_ utterance: Utterance) throws {
-        let line = "**[\(utterance.start.clockTime(in: timeZone))] \(utterance.speaker.label):** \(utterance.text)\n\n"
         try handle.withLockUnchecked { fileHandle in
             guard let fileHandle else { return }
-            try fileHandle.write(contentsOf: Data(line.utf8))
+            try fileHandle.write(contentsOf: Data(line(for: utterance).utf8))
         }
+    }
+
+    /// Replaces the file's lines with `utterances`, in the order given (the
+    /// transcript store keeps them in time order). The file is swapped in one
+    /// step, so a crash leaves either the old file or the new one.
+    public func rewrite(_ utterances: [Utterance]) throws {
+        let contents = header + utterances.map(line(for:)).joined()
+        try handle.withLockUnchecked { fileHandle in
+            try? fileHandle?.close()
+            fileHandle = nil
+            try Data(contents.utf8).write(to: fileURL, options: .atomic)
+            let reopened = try FileHandle(forWritingTo: fileURL)
+            try reopened.seekToEnd()
+            fileHandle = reopened
+        }
+    }
+
+    private func line(for utterance: Utterance) -> String {
+        "**[\(utterance.start.clockTime(in: timeZone))] \(utterance.speaker.label):** \(utterance.text)\n\n"
     }
 
     public func close() {
