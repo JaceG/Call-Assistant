@@ -83,7 +83,7 @@ struct SessionWriterTests {
         try writer.append(Answer(trigger: .auto, question: "How do you cache?", askedAt: Self.start + 30,
                                  text: "Serve the cached copy first.\n\n- Refresh in the background.", state: .done))
         #expect(try String(contentsOf: writer.fileURL, encoding: .utf8).hasSuffix("""
-            > **[14:13:50] Claude** (auto): *How do you cache?*
+            > **[14:13:50] Claude** (Auto): *How do you cache?*
             >
             > Serve the cached copy first.
             >
@@ -102,8 +102,8 @@ struct SessionWriterTests {
         try writer.append(Answer(trigger: .auto, question: "Hm?", askedAt: Self.start, text: "", state: .declined))
         let contents = try String(contentsOf: writer.fileURL, encoding: .utf8)
         #expect(contents.contains("> **[14:13:20] Claude** (Answer Now): *Okay.*\n>\n> Half an\n>\n> *(stopped)*\n"))
-        #expect(contents.contains("> **[14:13:20] Claude** (typed): *Hi?*\n>\n> *(failed: Claude is busy. Try again in a moment.)*\n"))
-        #expect(contents.contains("> **[14:13:20] Claude** (auto): *Hm?*\n>\n> *(Claude declined to answer this one.)*\n"))
+        #expect(contents.contains("> **[14:13:20] Claude** (Typed): *Hi?*\n>\n> *(failed: Claude is busy. Try again in a moment.)*\n"))
+        #expect(contents.contains("> **[14:13:20] Claude** (Auto): *Hm?*\n>\n> *(Claude declined to answer this one.)*\n"))
     }
 
     @Test func rewritingPutsAnswersAmongTheLinesByTime() throws {
@@ -116,7 +116,7 @@ struct SessionWriterTests {
         try writer.rewrite([question, reply], answers: [answer])
         let contents = try String(contentsOf: writer.fileURL, encoding: .utf8)
         let them = try #require(contents.range(of: "Them:** How do you cache?"))
-        let claude = try #require(contents.range(of: "Claude** (auto)"))
+        let claude = try #require(contents.range(of: "Claude** (Auto)"))
         let me = try #require(contents.range(of: "Me:** We cache per endpoint."))
         #expect(them.lowerBound < claude.lowerBound)
         #expect(claude.lowerBound < me.lowerBound)

@@ -60,6 +60,15 @@ public final class LiveSession {
         }
     }
 
+    /// Answer Now needs something they or I said, and no start or stop under
+    /// way. The button and the hotkey both check this.
+    public var canAnswerNow: Bool {
+        switch state {
+        case .preparing, .stopping: return false
+        case .idle, .listening, .failed: return !store.utterances.isEmpty || !store.partial.isEmpty
+        }
+    }
+
     public func start() async {
         guard !isRunning else { return }
         store.clear()

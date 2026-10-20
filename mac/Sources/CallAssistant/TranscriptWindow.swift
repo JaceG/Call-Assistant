@@ -3,32 +3,57 @@ import CallCore
 import SwiftUI
 
 /// The live transcript of a call: toolbar actions, both sides' lines as they
-/// arrive, and a status bar.
+/// arrive, Claude's answers under them, and a status bar.
 struct TranscriptWindow: View {
     let session: LiveSession
 
     /// Keep on Top's stored setting, shared with the app's window level.
     static let keepOnTopKey = "keepOnTop"
     static let keepOnTopByDefault = true
+    /// Auto-Answer's stored setting.
+    static let autoAnswerKey = "autoAnswer"
+    static let autoAnswerByDefault = false
+    /// The chosen playbook's name; "" for none.
+    static let playbookKey = "playbook"
+    static let playbookByDefault = "General"
 
     @AppStorage(keepOnTopKey) private var keepOnTop = keepOnTopByDefault
+    @AppStorage(autoAnswerKey) private var autoAnswer = autoAnswerByDefault
+    @AppStorage(playbookKey) private var playbookName = playbookByDefault
+    @State private var playbooks: [Playbook] = []
+    @State private var showingNotes = false
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     /// False once the user scrolls up, so new lines don't pull them back down.
     @State private var followsNewLines = true
 
     /// How close to the bottom still counts as "at the bottom" (points).
     private static let bottomTolerance: CGFloat = 24
+    /// The Call Notes editor's size (points).
+    private static let notesSize = CGSize(width: 320, height: 180)
 
     var body: some View {
-        transcript
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 0) {
-                    Divider()
-                    StatusBar(state: session.state)
-                }
+        // The split view ignores safe-area insets, so the status bar sits
+        // below it in a stack rather than in an inset.
+        VStack(spacing: 0) {
+            VSplitView {
+                transcript
+                AnswersPane(session: session)
             }
-            .toolbar { toolbar }
-            .frame(minWidth: 420, minHeight: 300)
+            Divider()
+            StatusBar(state: session.state)
+        }
+        .toolbar { toolbar }
+        .frame(minWidth: 420, minHeight: 300)
+        .onAppear {
+            session.answers.autoAnswer = autoAnswer
+            reloadPlaybooks()
+        }
+        .onChange(of: autoAnswer) { session.answers.autoAnswer = autoAnswer }
+        .onChange(of: playbookName) { applyPlaybook() }
+        // Playbook files added or edited in Finder show up when you come back to the app.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            reloadPlaybooks()
+        }
     }
 
     // MARK: Transcript
@@ -103,7 +128,65 @@ struct TranscriptWindow: View {
             }
             .toggleStyle(.button)
             .help(keepOnTop ? "Stop keeping this window above other windows" : "Keep this window above other windows")
+
+            // A menu whose label names the playbook in use; the picker inside
+            // marks it with a check.
+            Menu {
+                Picker("Playbook", selection: $playbookName) {
+                    Text("None").tag("")
+                    ForEach(playbooks) { playbook in
+                        Text(playbook.name).tag(playbook.name)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label(playbookName.isEmpty ? "No Playbook" : playbookName, systemImage: "list.bullet.rectangle")
+            }
+            .labelStyle(.titleAndIcon)
+            .help("Choose the instructions Claude follows on this call")
+
+            Button {
+                showingNotes.toggle()
+            } label: {
+                Label("Call Notes", systemImage: "note.text")
+            }
+            .help("Write notes about this call for Claude")
+            .popover(isPresented: $showingNotes) {
+                TextEditor(text: callNotes)
+                    .frame(width: Self.notesSize.width, height: Self.notesSize.height)
+                    .padding()
+            }
+
+            Button {
+                session.answers.answerNow(transcript: session.store)
+            } label: {
+                Label("Answer Now", systemImage: "sparkles")
+            }
+            .disabled(!session.canAnswerNow)
+            .help("Ask Claude to answer what they just said (⌃⌥A)")
+
+            Toggle(isOn: $autoAnswer) {
+                Label("Auto-Answer", systemImage: autoAnswer ? "bolt.fill" : "bolt")
+            }
+            .toggleStyle(.button)
+            .help(autoAnswer ? "Stop answering their questions automatically" : "Answer their questions automatically")
         }
+    }
+
+    private var callNotes: Binding<String> {
+        Binding(get: { session.answers.callNotes }, set: { session.answers.callNotes = $0 })
+    }
+
+    private func reloadPlaybooks() {
+        playbooks = (try? PlaybookLibrary().load()) ?? []
+        if !playbookName.isEmpty && !playbooks.contains(where: { $0.name == playbookName }) {
+            playbookName = ""
+        }
+        applyPlaybook()
+    }
+
+    private func applyPlaybook() {
+        session.answers.playbook = playbooks.first { $0.name == playbookName }
     }
 
     private var isListening: Bool { session.state == .listening }

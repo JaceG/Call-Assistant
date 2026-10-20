@@ -12,12 +12,12 @@ public struct Answer: Identifiable, Sendable, Equatable {
         /// A question Jace typed.
         case typed
 
-        /// How the call file names it.
+        /// Its name, the same in the window and the call file.
         public var label: String {
             switch self {
-            case .auto: "auto"
+            case .auto: "Auto"
             case .answerNow: "Answer Now"
-            case .typed: "typed"
+            case .typed: "Typed"
             }
         }
     }
