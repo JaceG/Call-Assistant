@@ -1,0 +1,21 @@
+# Third-party source cloned for reading only (not part of this project)
+reference/
+
+# macOS
+.DS_Store
+
+# Xcode / SwiftPM
+.build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+.swiftpm/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Secrets
+.env
+*.env.local
