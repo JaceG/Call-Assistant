@@ -79,6 +79,10 @@ public enum AnswerError: LocalizedError, Equatable {
     case http(status: Int, message: String)
     case network(String)
     case badStream(String)
+    /// Claude declined (`stop_reason: "refusal"`).
+    case declined
+    /// The reply hit `max_tokens` before it finished.
+    case cutShort
 
     public var errorDescription: String? {
         switch self {
@@ -91,6 +95,8 @@ public enum AnswerError: LocalizedError, Equatable {
         case .http(let status, let message): "Claude returned an error (\(status)): \(message)"
         case .network(let message): "Couldn't reach Claude: \(message)"
         case .badStream(let message): "Claude's reply couldn't be read: \(message)"
+        case .declined: "Claude declined this one."
+        case .cutShort: "Claude's reply was cut short."
         }
     }
 }
@@ -106,4 +112,12 @@ public protocol AnswerProvider: Sendable {
 
 extension AnswerProvider {
     public func warm(_ prompt: AnswerPrompt) async throws -> Usage { Usage() }
+}
+
+/// Something that answers a prompt with JSON matching a schema, in one piece:
+/// the live summary and the review after a call.
+public protocol StructuredProvider: Sendable {
+    /// - Parameter schema: a JSON Schema, as JSON.
+    /// - Returns: the reply, JSON that matches the schema.
+    func json(_ prompt: AnswerPrompt, schema: Data) async throws -> Data
 }

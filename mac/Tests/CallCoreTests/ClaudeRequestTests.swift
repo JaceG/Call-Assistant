@@ -96,4 +96,36 @@ struct ClaudeRequestTests {
         let body = Data(#"{"type":"error","error":{"type":"invalid_request_error","message":"max_tokens: too big"}}"#.utf8)
         #expect(ClaudeProvider.error(status: 400, body: body, retryAfter: nil) == .http(status: 400, message: "max_tokens: too big"))
     }
+
+    // MARK: JSON replies
+
+    static let schema = Data(#"{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"],"additionalProperties":false}"#.utf8)
+
+    @Test func aJSONRequestAsksForTheSchemaWithoutStreamingOrTools() throws {
+        var prompt = Self.prompt
+        prompt.lookup = FileLookup(files: CallFiles(files: [ContextFile(path: "a", text: "a")], skipped: []))
+        let data = ClaudeProvider.jsonBody(for: prompt, schema: Self.schema, model: "claude-sonnet-5-5", effort: "low")
+        let body = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        #expect(body["stream"] == nil)
+        #expect(body["tools"] == nil)
+        let config = try #require(body["output_config"] as? [String: Any])
+        #expect(config["effort"] as? String == "low")
+        let format = try #require(config["format"] as? [String: Any])
+        #expect(format["type"] as? String == "json_schema")
+        #expect((format["schema"] as? [String: Any])?["required"] as? [String] == ["summary"])
+    }
+
+    @Test func theJSONReplyIsTheTextBlock() throws {
+        let reply = Data(#"{"content":[{"type":"thinking","thinking":"","signature":"s"},{"type":"text","text":"{\"summary\":\"Hi\"}"}],"stop_reason":"end_turn"}"#.utf8)
+        #expect(try ClaudeProvider.jsonReply(from: reply) == Data(#"{"summary":"Hi"}"#.utf8))
+    }
+
+    @Test func aDeclinedOrCutShortJSONReplyIsAnError() {
+        #expect(throws: AnswerError.declined) {
+            try ClaudeProvider.jsonReply(from: Data(#"{"content":[],"stop_reason":"refusal"}"#.utf8))
+        }
+        #expect(throws: AnswerError.cutShort) {
+            try ClaudeProvider.jsonReply(from: Data(#"{"content":[{"type":"text","text":"{"}],"stop_reason":"max_tokens"}"#.utf8))
+        }
+    }
 }

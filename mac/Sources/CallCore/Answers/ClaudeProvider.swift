@@ -3,7 +3,7 @@ import Foundation
 /// Answers through Claude's Messages API, streaming the reply as it's written.
 /// Swift has no official Anthropic SDK, so this speaks HTTP directly
 /// (`URLSession`), following the API's documented request and event shapes.
-public struct ClaudeProvider: AnswerProvider {
+public struct ClaudeProvider: AnswerProvider, StructuredProvider {
     public static let endpoint = URL(string: "https://api.anthropic.com/v1/messages")!
     public static let defaultModel = "claude-sonnet-5-5"
     /// Room for thinking plus the reply; thinking counts toward it.
@@ -107,6 +107,50 @@ public struct ClaudeProvider: AnswerProvider {
             cacheReadTokens: usage?["cache_read_input_tokens"] as? Int ?? 0,
             cacheWriteTokens: usage?["cache_creation_input_tokens"] as? Int ?? 0
         )
+    }
+
+    public func json(_ prompt: AnswerPrompt, schema: Data) async throws -> Data {
+        var urlRequest = try Self.urlRequest(apiKey: apiKey(), body: Self.jsonBody(for: prompt, schema: schema, model: model, effort: effort))
+        urlRequest.timeoutInterval = 120
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: urlRequest)
+        } catch {
+            throw Self.mapped(error)
+        }
+        let http = response as? HTTPURLResponse
+        guard let http, http.statusCode == 200 else {
+            throw Self.error(status: http?.statusCode ?? 0, body: data, retryAfter: http?.value(forHTTPHeaderField: "retry-after"))
+        }
+        return try Self.jsonReply(from: data)
+    }
+
+    /// A request for JSON matching `schema`: not streamed, no tools.
+    static func jsonBody(for prompt: AnswerPrompt, schema: Data, model: String, effort: String) -> Data {
+        var prompt = prompt
+        prompt.lookup = nil
+        var body = body(for: prompt, model: model, effort: effort, thinkingOff: false)
+        let schemaObject = (try? JSONSerialization.jsonObject(with: schema)) ?? [:]
+        body["output_config"] = ["effort": effort, "format": ["type": "json_schema", "schema": schemaObject]]
+        return encoded(body)
+    }
+
+    /// The JSON text of a non-streamed reply.
+    static func jsonReply(from data: Data) throws -> Data {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw AnswerError.badStream("the reply wasn't JSON")
+        }
+        switch object["stop_reason"] as? String {
+        case "refusal": throw AnswerError.declined
+        case "max_tokens": throw AnswerError.cutShort
+        default: break
+        }
+        let blocks = object["content"] as? [[String: Any]] ?? []
+        guard let text = blocks.first(where: { $0["type"] as? String == "text" })?["text"] as? String else {
+            throw AnswerError.badStream("the reply had no text")
+        }
+        return Data(text.utf8)
     }
 
     static func urlRequest(apiKey: String, body: Data) -> URLRequest {
