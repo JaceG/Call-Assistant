@@ -19,7 +19,7 @@ struct QuickActionsBar: View {
                 HStack {
                     ForEach(actions.filter(\.isComplete)) { action in
                         Button(action.name) { run(action) }
-                            .help("Ask Claude: \(action.prompt)")
+                            .help(Self.help(for: action))
                     }
                 }
             }
@@ -29,7 +29,7 @@ struct QuickActionsBar: View {
             Button {
                 editing.toggle()
             } label: {
-                Label("Edit Quick Actions", systemImage: "slider.horizontal.3")
+                Label("Edit Buttons", systemImage: "slider.horizontal.3")
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
@@ -38,6 +38,14 @@ struct QuickActionsBar: View {
                 QuickActionsEditor(actions: $actions)
             }
         }
+    }
+
+    /// "Ask Claude: Make that shorter", without the prompt's closing period,
+    /// like the window's other help.
+    static func help(for action: QuickAction) -> String {
+        var prompt = action.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        if prompt.hasSuffix(".") { prompt.removeLast() }
+        return "Ask Claude: \(prompt)"
     }
 }
 
@@ -50,14 +58,15 @@ private struct QuickActionsEditor: View {
     /// The button just added, to scroll to.
     @State private var added: UUID?
 
-    /// The most the list grows before it scrolls (points).
+    /// The list's height (points); longer lists scroll.
     private static let listHeight: CGFloat = 260
 
     var body: some View {
         VStack(alignment: .leading) {
             if actions.isEmpty {
-                Text("No buttons. Add one, or restore the starters.")
+                Text("No buttons yet. Add one, or restore the starters.")
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 ScrollViewReader { list in
                     List {
@@ -122,7 +131,7 @@ private struct ActionRow: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .help("Remove this button")
+            .help("Remove \(action.name.isEmpty ? "this button" : action.name)")
         }
     }
 }
