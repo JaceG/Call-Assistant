@@ -38,7 +38,7 @@ public enum Probes {
             return await transcribe(file: URL(fileURLWithPath: value))
         case "--probe-answer":
             guard let value else {
-                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N] [--transcript <call.md>] [--playbook <name>] [--notes \"<text>\"] [--files <folder or file>]... [--warm]")
+                print("Usage: --probe-answer \"<question>\" [--effort low|medium|high] [--thinking-off] [--runs N] [--transcript <call.md>] [--playbook <name>] [--notes \"<text>\"] [--files <folder or file>]... [--warm] [--detected | --answer-now]")
                 return 64
             }
             func option(_ name: String) -> String? { arguments.drop { $0 != name }.dropFirst().first }
@@ -54,6 +54,13 @@ public enum Probes {
                     .map { URL(fileURLWithPath: arguments[$0 + 1]) },
                 warm: arguments.contains("--warm")
             )
+        case "--probe-follow-up":
+            let questions = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
+            guard questions.count >= 2 else {
+                print("Usage: --probe-follow-up \"<question>\" \"<follow-up>\"...")
+                return 64
+            }
+            return await followUp(Array(questions))
         case "--probe-files":
             let picks = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
             guard !picks.isEmpty else {
@@ -348,7 +355,8 @@ extension Probes {
         }
         let builder = PromptBuilder(playbook: playbook, callNotes: notes, files: files)
         let prompt = builder.prompt(lines: lines, themSaying: nil,
-                                    question: CommandLine.arguments.contains("--detected") ? .detected(question) : .typed(question))
+                                    question: CommandLine.arguments.contains("--answer-now") ? .answerNow
+                                        : CommandLine.arguments.contains("--detected") ? .detected(question) : .typed(question))
         print("model \(ClaudeProvider.defaultModel), effort \(effort), thinking \(thinkingOff ? "between_tools (off)" : "adaptive")")
         func seconds(_ d: Duration) -> Double { Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18 }
         if warm {
@@ -453,5 +461,31 @@ extension Probes {
             print("  \(skipped.count) \(reason): \(skipped.prefix(5).map(\.path).joined(separator: ", "))\(skipped.count > 5 ? ", …" : "")")
         }
         return files.isEmpty ? 1 : 0
+    }
+}
+
+extension Probes {
+    /// Types each question in turn, as Jace would in Ask Claude, waiting for
+    /// each answer, so later questions can refer to earlier answers ("make
+    /// that shorter"). Prints every answer.
+    @MainActor
+    static func followUp(_ questions: [String]) async -> Int32 {
+        let key: String
+        do {
+            key = try APIKeyStore.read()
+        } catch {
+            print("RESULT no key: \(error.localizedDescription)")
+            return 2
+        }
+        let engine = AnswerEngine(provider: ClaudeProvider(apiKey: { key }))
+        let transcript = TranscriptStore()
+        for question in questions {
+            engine.ask(question, transcript: transcript)
+            while engine.isAnswering { try? await Task.sleep(for: .milliseconds(100)) }
+            let answer = engine.answers.last
+            print("Q: \(question)")
+            print("A (\(answer.map { "\($0.state)" } ?? "none")): \(answer?.text.replacingOccurrences(of: "\n", with: " ⏎ ") ?? "")")
+        }
+        return engine.answers.allSatisfy { $0.state == .done } ? 0 : 1
     }
 }

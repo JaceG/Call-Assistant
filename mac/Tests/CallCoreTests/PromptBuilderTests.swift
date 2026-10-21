@@ -150,6 +150,59 @@ struct PromptBuilderTests {
         #expect(Self.builder().prompt(lines: [], themSaying: "", question: .typed("What is a mutex?")).transcript.isEmpty)
     }
 
+    // MARK: Earlier answers and pending lines
+
+    static func answer(_ trigger: Answer.Trigger, _ question: String, _ text: String, at seconds: TimeInterval,
+                       state: Answer.State = .done) -> Answer {
+        Answer(trigger: trigger, question: question, askedAt: t0 + seconds, text: text, state: state)
+    }
+
+    @Test func earlierAnswersReadAsClaudeLinesInRecordedOrder() {
+        let entries: [TranscriptEntry] = [
+            .line(Self.line(.them, "How do you cache?", at: 0)),
+            .answer(Self.answer(.auto, "How do you cache?", "I cache at the edge.\n\nThen I invalidate on write.", at: 3)),
+            .line(Self.line(.me, "I cache at the edge.", at: 10)),
+        ]
+        let transcript = Self.builder().prompt(entries: entries, themSaying: nil, question: .answerNow).transcript
+        #expect(transcript.map(\.text) == [PromptBuilder.transcriptHeading + """
+            [14:13:20] Them: How do you cache?
+            [14:13:23] Claude, to Jace only: I cache at the edge. Then I invalidate on write.
+            [14:13:30] Me: I cache at the edge.
+            """])
+    }
+
+    @Test func aTypedAnswerShowsItsQuestionAndACutOffAnswerSaysSo() {
+        let entries: [TranscriptEntry] = [
+            .answer(Self.answer(.typed, "What is a mutex?", "A lock.", at: 0)),
+            .answer(Self.answer(.answerNow, "Them", "I'd start by", at: 5, state: .stopped)),
+        ]
+        let text = Self.builder().prompt(entries: entries, themSaying: nil, question: .typed("Shorter")).transcript[0].text
+        #expect(text.hasSuffix("""
+            [14:13:20] Jace typed to Claude: What is a mutex?
+            [14:13:20] Claude, to Jace only: A lock.
+            [14:13:25] Claude, to Jace only: I'd start by (cut off)
+            """))
+    }
+
+    @Test func myPendingLinesGoByTimeAmongTheNewestLines() {
+        let entries: [TranscriptEntry] = [
+            .line(Self.line(.them, "How do you cache?", at: 0)),
+            .line(Self.line(.them, "In production. How would you invalidate it?", at: 20)),
+        ]
+        let pending = [Self.line(.me, "In production or in tests?", at: 10)]
+        let text = Self.builder().prompt(entries: entries, pendingMine: pending, themSaying: nil, question: .answerNow).transcript[0].text
+        #expect(text.hasSuffix("""
+            [14:13:20] Them: How do you cache?
+            [14:13:30] Me: In production or in tests?
+            [14:13:40] Them: In production. How would you invalidate it?
+            """))
+    }
+
+    @Test func theBasePromptExplainsClaudeLines() {
+        #expect(PromptBuilder.basePrompt.contains("Lines marked \"Claude\" are your own earlier replies"))
+        #expect(PromptBuilder.basePrompt.contains("he means your latest one"))
+    }
+
     // MARK: Question
 
     @Test func eachTriggerAsksInItsOwnWords() {

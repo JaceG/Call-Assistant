@@ -84,6 +84,41 @@ struct AnswerEngineTests {
         #expect(provider.prompts.first?.system.contains { $0.text.contains("Eight years of Swift.") } == true)
     }
 
+    @Test func laterAnswersSeeEarlierOnes() async {
+        let provider = FakeProvider()
+        let engine = AnswerEngine(provider: provider)
+        let transcript = TranscriptStore()
+        engine.ask("What is a mutex?", transcript: transcript)
+        #expect(await Self.eventually { engine.answers.first?.state == .done })
+        engine.ask("Make that shorter", transcript: transcript)
+        #expect(await Self.eventually { provider.prompts.count == 2 })
+        let seen = provider.prompts[1].transcript.map(\.text).joined(separator: "\n")
+        #expect(seen.contains("Jace typed to Claude: What is a mutex?"))
+        #expect(seen.contains("Claude, to Jace only: Short answer."))
+    }
+
+    @Test func aFailedAnswerIsLeftOut() async {
+        let provider = FakeProvider([.text("Partial ")], failure: .overloaded)
+        let engine = AnswerEngine(provider: provider)
+        let transcript = TranscriptStore()
+        engine.ask("What is a mutex?", transcript: transcript)
+        #expect(await Self.eventually { engine.answers.first?.state == .failed(AnswerError.overloaded.localizedDescription) })
+        engine.ask("Again?", transcript: transcript)
+        #expect(await Self.eventually { provider.prompts.count == 2 })
+        #expect(!provider.prompts[1].transcript.contains { $0.text.contains("Claude,") })
+    }
+
+    @Test func myLinesStillHeldForTheEchoCheckAreInThePrompt() async {
+        let provider = FakeProvider()
+        let engine = AnswerEngine(provider: provider)
+        let transcript = TranscriptStore()
+        engine.lineRecorded(Self.line(.them, "How would you cache API responses?"), transcript: transcript)
+        engine.pendingMine = { [Self.line(.me, "In production or in tests?", at: 5)] }
+        engine.answerNow(transcript: transcript)
+        #expect(await Self.eventually { provider.prompts.count == 1 })
+        #expect(provider.prompts[0].transcript.last?.text.hasSuffix("Me: In production or in tests?") == true)
+    }
+
     @Test func autoAnswerWaitsForThemToPauseThenAnswers() async {
         let engine = AnswerEngine(provider: FakeProvider(), pause: .milliseconds(150))
         let transcript = TranscriptStore()

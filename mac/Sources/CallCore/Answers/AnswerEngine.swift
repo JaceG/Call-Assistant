@@ -85,14 +85,18 @@ public final class AnswerEngine {
     public var callNotes = ""
     /// The folders and files picked for the call, read as text.
     public var files = CallFiles.none
+    /// My lines heard but not recorded yet, cleaned of echo as far as can be
+    /// told now. Set by the session, which holds them for the echo check.
+    @ObservationIgnored public var pendingMine: @MainActor () -> [Utterance] = { [] }
     /// Called once for each answer when it ends, however it ends.
     @ObservationIgnored public var onFinished: ((Answer) -> Void)?
 
     @ObservationIgnored private let provider: AnswerProvider
     @ObservationIgnored private let detector: QuestionDetector
     @ObservationIgnored private let pause: Duration
-    /// The call's lines in the order they were recorded (see PromptBuilder).
-    @ObservationIgnored private var lines: [Utterance] = []
+    /// The call's lines and finished answers in the order they were recorded
+    /// (see PromptBuilder).
+    @ObservationIgnored private var entries: [TranscriptEntry] = []
     @ObservationIgnored private var current: (id: UUID, task: Task<Void, Never>)?
     /// A spotted question waiting for them to pause.
     @ObservationIgnored private var spotted: String?
@@ -112,7 +116,7 @@ public final class AnswerEngine {
     /// A finished line of the call. Auto-Answer looks for a question in it.
     public func lineRecorded(_ line: Utterance, transcript: TranscriptStore) {
         self.transcript = transcript
-        lines.append(line)
+        entries.append(.line(line))
         guard autoAnswer, let question = detector.question(in: line) else { return }
         spotted = spotted.map { "\($0) \(question)" } ?? question
         watchForPause()
@@ -122,7 +126,7 @@ public final class AnswerEngine {
     public func answerNow(transcript: TranscriptStore) {
         self.transcript = transcript
         let saying = transcript.partial[.them].flatMap { $0.isEmpty ? nil : $0 }
-        let said = saying ?? lines.last { $0.speaker == .them }?.text ?? "What they just said"
+        let said = saying ?? lastLine(of: .them)?.text ?? "What they just said"
         startNow(.answerNow, shown: said, trigger: .answerNow)
     }
 
@@ -159,7 +163,12 @@ public final class AnswerEngine {
         current?.task.cancel()
         current = nil
         answers = []
-        lines = []
+        entries = []
+    }
+
+    private func lastLine(of speaker: Speaker) -> Utterance? {
+        for case .line(let line) in entries.reversed() where line.speaker == speaker { return line }
+        return nil
     }
 
     // MARK: Running answers
@@ -172,7 +181,7 @@ public final class AnswerEngine {
     /// answered as quickly as later ones. A failure only costs that speed.
     public func warm() async {
         guard !files.isEmpty else { return }
-        let prompt = promptBuilder.prompt(lines: lines, themSaying: nil, question: .typed(LiveSession.warmQuestion))
+        let prompt = promptBuilder.prompt(entries: entries, themSaying: nil, question: .typed(LiveSession.warmQuestion))
         do {
             let usage = try await provider.warm(prompt)
             Log.session.info("warmed the cache: \(usage.cacheWriteTokens) written, \(usage.cacheReadTokens) read")
@@ -227,7 +236,8 @@ public final class AnswerEngine {
     }
 
     private func start(_ question: Question, shown: String, trigger: Answer.Trigger) {
-        let prompt = promptBuilder.prompt(lines: lines, themSaying: transcript?.partial[.them], question: question)
+        let prompt = promptBuilder.prompt(entries: entries, pendingMine: pendingMine(),
+                                          themSaying: transcript?.partial[.them], question: question)
         let answer = Answer(trigger: trigger, question: shown, askedAt: Date())
         answers.append(answer)
         let id = answer.id
@@ -275,6 +285,10 @@ public final class AnswerEngine {
         guard let index = answers.firstIndex(where: { $0.id == id }), !answers[index].state.isFinished else { return }
         answers[index].state = state
         if current?.id == id { current = nil }
+        // Later answers see what Claude already told Jace.
+        if state == .done || state == .stopped, !answers[index].text.isEmpty {
+            entries.append(.answer(answers[index]))
+        }
         onFinished?(answers[index])
         if current == nil, let question = queued {
             queued = nil

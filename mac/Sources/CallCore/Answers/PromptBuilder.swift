@@ -8,6 +8,13 @@ public enum Question: Sendable, Equatable {
     case typed(String)
 }
 
+/// One item of the call as Claude reads it: a line someone said, or one of
+/// Claude's own earlier answers, which only Jace saw.
+public enum TranscriptEntry: Sendable, Equatable {
+    case line(Utterance)
+    case answer(Answer)
+}
+
 /// Builds the prompt for one answer: the base instructions, the playbook and
 /// the call notes (system), then the transcript and the question.
 ///
@@ -21,6 +28,10 @@ public struct PromptBuilder: Sendable {
         "Me" is Jace (his microphone) and "Them" is the other side of the call (the computer's audio). \
         Recognition makes sound-alike mistakes, such as "home" for "phone" or "cash" for "cache". Silently \
         read them as what the speaker meant, and never mention them.
+
+        Lines marked "Claude" are your own earlier replies. Only Jace saw them, and he may or may not have \
+        said them out loud; what he actually said is in his "Me" lines. When he asks you to change a reply \
+        (shorter, simpler, in other words), he means your latest one.
 
         Jace reads your reply while the call is going and says it out loud, so always reply in exactly \
         two parts and nothing else:
@@ -59,11 +70,21 @@ public struct PromptBuilder: Sendable {
     }
 
     /// - Parameters:
-    ///   - lines: the call's finished lines, in the order they were recorded.
+    ///   - entries: the call's finished lines and Claude's finished answers,
+    ///     in the order they were recorded.
+    ///   - pendingMine: my lines heard but not recorded yet (they wait a few
+    ///     seconds for the echo check); placed by time among the newest lines.
     ///   - themSaying: their words still being recognized, if any.
-    public func prompt(lines: [Utterance], themSaying: String?, question: Question) -> AnswerPrompt {
-        AnswerPrompt(system: system(), transcript: transcript(lines, themSaying: themSaying), question: text(for: question),
+    public func prompt(entries: [TranscriptEntry], pendingMine: [Utterance] = [], themSaying: String?,
+                       question: Question) -> AnswerPrompt {
+        AnswerPrompt(system: system(), transcript: transcript(entries, pendingMine: pendingMine, themSaying: themSaying),
+                     question: text(for: question),
                      lookup: !files.isEmpty && files.mode == .lookUp ? FileLookup(files: files) : nil)
+    }
+
+    /// A prompt from lines alone, with no earlier answers.
+    public func prompt(lines: [Utterance], themSaying: String?, question: Question) -> AnswerPrompt {
+        prompt(entries: lines.map(TranscriptEntry.line), themSaying: themSaying, question: question)
     }
 
     /// Base, files, playbook, notes. The files come before the notes so that
@@ -106,22 +127,50 @@ public struct PromptBuilder: Sendable {
         return text
     }
 
-    private func transcript(_ lines: [Utterance], themSaying: String?) -> [PromptBlock] {
-        let rendered = lines.map { "[\($0.start.clockTime(in: timeZone))] \($0.speaker.label): \($0.text)" }
+    private func transcript(_ entries: [TranscriptEntry], pendingMine: [Utterance], themSaying: String?) -> [PromptBlock] {
+        let rendered = entries.map(render)
         let frozenCount = rendered.count / chunkSize * chunkSize
         var blocks = stride(from: 0, to: frozenCount, by: chunkSize).map {
             PromptBlock(text: rendered[$0..<($0 + chunkSize)].joined(separator: "\n"))
         }
         if !blocks.isEmpty { blocks[blocks.count - 1].cacheBreakpoint = true }
 
-        var tail = Array(rendered[frozenCount...])
-        if let themSaying, !themSaying.isEmpty {
-            tail.append("(still speaking) \(Speaker.them.label): \(themSaying)")
+        // The newest entries, with my pending lines placed by time: each goes
+        // before the first entry that started after it.
+        var tail = zip(entries[frozenCount...], rendered[frozenCount...]).map { (time: Self.time(of: $0), text: $1) }
+        for line in pendingMine.sorted(by: { $0.start < $1.start }) {
+            let index = tail.firstIndex { $0.time > line.start } ?? tail.endIndex
+            tail.insert((line.start, render(.line(line))), at: index)
         }
-        if !tail.isEmpty { blocks.append(PromptBlock(text: tail.joined(separator: "\n"))) }
+        var tailText = tail.map(\.text)
+        if let themSaying, !themSaying.isEmpty {
+            tailText.append("(still speaking) \(Speaker.them.label): \(themSaying)")
+        }
+        if !tailText.isEmpty { blocks.append(PromptBlock(text: tailText.joined(separator: "\n"))) }
 
         if !blocks.isEmpty { blocks[0].text = Self.transcriptHeading + blocks[0].text }
         return blocks
+    }
+
+    /// A line as "[time] Speaker: text"; an answer as "[time] Claude, to Jace
+    /// only: text" on one line, after the question when Jace typed it.
+    private func render(_ entry: TranscriptEntry) -> String {
+        switch entry {
+        case .line(let line):
+            return "[\(line.start.clockTime(in: timeZone))] \(line.speaker.label): \(line.text)"
+        case .answer(let answer):
+            let time = "[\(answer.askedAt.clockTime(in: timeZone))]"
+            let text = answer.text.split(whereSeparator: \.isNewline).joined(separator: " ")
+            let reply = "\(time) Claude, to Jace only: \(text)\(answer.state == .stopped ? " (cut off)" : "")"
+            return answer.trigger == .typed ? "\(time) Jace typed to Claude: \(answer.question)\n\(reply)" : reply
+        }
+    }
+
+    private static func time(of entry: TranscriptEntry) -> Date {
+        switch entry {
+        case .line(let line): line.start
+        case .answer(let answer): answer.askedAt
+        }
     }
 
     private func text(for question: Question) -> String {

@@ -32,6 +32,8 @@ project's code or your resume), and saves each call as a Markdown transcript.
   - **Ask Claude…**: type a question under the answers and press Return. This works without a call too.
 
   A new Answer Now or typed question stops an answer that's still being written.
+
+  Every answer sees the whole call so far, including Claude's own earlier answers, so you can type "make that shorter" or "say it more casually". Your own latest words count straight away, even while they're still being checked for echo.
 - **Playbooks and call notes.** These are instructions Claude follows in every answer:
   - **A playbook** is a Markdown file per kind of call (an interview, a client check-in), picked from the **Playbook** menu.
   - **Call Notes** are for this one call (who it's with, what it's about).
@@ -139,6 +141,8 @@ open mac/dist/CallAssistant.app --stdout /tmp/ca.log --stderr /tmp/ca.log --args
   - `--thinking-off`
   - `--files <folder or file>` (repeatable): answer with these picked, as a call would.
   - `--warm`: fill the cache first and print how long that took.
+  - `--detected` or `--answer-now`: ask the way Auto-Answer or Answer Now does, instead of as a typed question.
+- `--probe-follow-up "<question>" "<follow-up>"...`: types each question in turn, waiting for each answer, so later ones can refer to earlier answers ("Make that shorter").
 - `--probe-detect <call.md>`: replays a saved call and lists the lines Auto-Answer would answer. It makes no API call.
 - `--probe-files <folder or file>...`: reads picks as a call would and prints the file count, the size, whole or search, the largest files and what was skipped. It makes no API call.
 

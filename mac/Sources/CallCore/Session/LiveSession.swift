@@ -51,6 +51,7 @@ public final class LiveSession {
         self.sessionsDirectory = sessionsDirectory
         answers = AnswerEngine(provider: provider)
         answers.onFinished = { [weak self] answer in self?.save(answer) }
+        answers.pendingMine = { [weak self] in self?.pendingMine() ?? [] }
     }
 
     /// The stand-in question a warm request carries; it's read, never answered.
@@ -246,6 +247,12 @@ public final class LiveSession {
             return
         }
         commit(utterance)
+    }
+
+    /// My held lines as Claude should see them now: cleaned against their
+    /// lines so far, and left out if they're nothing but echo.
+    private func pendingMine() -> [Utterance] {
+        heldMine.compactMap { echoFilter.clean($0.utterance, against: store.utterances) }
     }
 
     /// Filters and records my held lines once they've waited long enough

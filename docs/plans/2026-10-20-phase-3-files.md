@@ -206,3 +206,25 @@ After Task 5, show Jace the window with files picked and an answer that came fro
 - **Not tested:**
   - **The open panel:** it runs in a separate macOS process that I'm not allowed to click. The picks were stored with `defaults write` instead.
   - **Warming at Start inside the window:** it's the same `warm()` the probe measured.
+
+## Follow-ups (2026-10-21)
+
+Jace asked what happens when he asks a follow-up and they answer, with or without a question, more than once. Reading the code turned up two gaps, and he said to fix both.
+
+1. **Claude didn't see its own earlier answers.**
+   - Finished answers (done, or stopped with text) now go into the prompt's transcript as "Claude, to Jace only" lines.
+     - They're recorded in order, so the cached chunks still don't change.
+     - Typed questions appear before their answers.
+   - The base prompt says those lines are Claude's own earlier replies, which only Jace saw.
+   - Measured: "Make that shorter" and then "Now say it more casually" both reworked the earlier mutex answer.
+2. **My lines waited 3 s for the echo check before Claude could see them.**
+   - The prompt now includes those held lines, cleaned by the same echo filter against their lines so far, and placed by time among the newest lines.
+   - Unit-tested only. The timing race needs a real call.
+
+**Probe check of Jace's scenario,** with Answer Now:
+- **Round 1.** They asked about caching. Jace asked "production or the test suite?" They said "Production, mostly… data only changes about once an hour", with no question.
+  - The answer: an hour-long TTL across a couple of layers.
+- **Round 2.** Jace said he'd cache for an hour. They said customers expect to see their own edits right away.
+  - The answer: invalidate a record's cache when it's edited, with the hourly TTL kept as a safety net.
+- Both rounds, 2 runs each, answered the original question in light of the follow-ups.
+
