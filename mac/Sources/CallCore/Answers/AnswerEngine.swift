@@ -107,6 +107,9 @@ public final class AnswerEngine {
     /// A spotted question waiting for the current answer to end.
     @ObservationIgnored private var queued: String?
     @ObservationIgnored private weak var transcript: TranscriptStore?
+    /// Tells macOS an answer is being written, so App Nap doesn't slow the
+    /// request while the window is behind other windows.
+    @ObservationIgnored private var activity: NSObjectProtocol?
 
     public init(provider: AnswerProvider, detector: QuestionDetector = QuestionDetector(), pause: Duration = .milliseconds(1500)) {
         self.provider = provider
@@ -173,6 +176,10 @@ public final class AnswerEngine {
         cancelWaiting()
         current?.task.cancel()
         current = nil
+        if let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
         answers = []
         entries = []
     }
@@ -268,6 +275,9 @@ public final class AnswerEngine {
             }
         }
         current = (id, task)
+        if activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(options: .userInitiated, reason: "Writing an answer")
+        }
     }
 
     private func receive(_ event: AnswerEvent, for id: UUID, started: ContinuousClock.Instant) {
@@ -296,6 +306,10 @@ public final class AnswerEngine {
         guard let index = answers.firstIndex(where: { $0.id == id }), !answers[index].state.isFinished else { return }
         answers[index].state = state
         if current?.id == id { current = nil }
+        if current == nil, let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
         // Later answers see what Claude already told Jace.
         if state == .done || state == .stopped, !answers[index].text.isEmpty {
             entries.append(.answer(answers[index]))

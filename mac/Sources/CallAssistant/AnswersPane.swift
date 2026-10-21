@@ -1,17 +1,22 @@
 import CallCore
 import SwiftUI
 
-/// Claude's answers for the call, newest at the bottom, and a field to type a
-/// question. Sits under the transcript.
+/// Claude's answers for the call, newest at the bottom, the quick-action
+/// buttons, and a field to type a question. Sits under the transcript.
 struct AnswersPane: View {
     let session: LiveSession
 
     @State private var scrollPosition = ScrollPosition(idType: UUID.self)
     @State private var question = ""
+    @AppStorage(QuickActionsBar.storageKey) private var storedQuickActions = ""
 
     var body: some View {
         VStack(spacing: 0) {
             answers
+            QuickActionsBar(actions: quickActions) { action in
+                session.answers.quickAction(action, transcript: session.store)
+            }
+            .padding([.horizontal, .top])
             TextField("Ask Claude…", text: $question)
                 .onSubmit(ask)
                 .padding()
@@ -49,6 +54,10 @@ struct AnswersPane: View {
 
     private func showNewest(_ answers: [Answer]) {
         if let id = answers.last?.id { scrollPosition.scrollTo(id: id, anchor: .top) }
+    }
+
+    private var quickActions: Binding<[QuickAction]> {
+        Binding(get: { QuickAction.decode(storedQuickActions) }, set: { storedQuickActions = QuickAction.encode($0) })
     }
 
     private func ask() {
