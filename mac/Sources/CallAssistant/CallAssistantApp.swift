@@ -48,6 +48,8 @@ struct CallAssistantApp: App {
         Window("Past Calls", id: PastCallsWindow.windowID) {
             PastCallsWindow(session: session)
         }
+        // Floats with the call window, so it isn't hidden behind it.
+        .windowLevel(keepOnTop ? .floating : .normal)
         .defaultLaunchBehavior(.suppressed)
     }
 }

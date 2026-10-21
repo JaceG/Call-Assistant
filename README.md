@@ -26,6 +26,11 @@ project's code or your resume), and saves each call as a Markdown transcript.
   - Start/Stop, the live transcript with each side's text in progress, and a status bar.
   - Copy Transcript, Open Sessions Folder, and Keep on Top (it floats above the call app by default).
 - **Saved transcripts.** One Markdown file per call in `~/Library/Application Support/CallAssistant/Sessions/`, written line by line as the call goes. Claude's answers are saved in it too, as quotes.
+- **Past Calls** (the clock button, or **File > Past Calls**, ⌘Y): every saved call, newest first, searchable across transcripts and summaries.
+  - Each call shows its transcript with Claude's answers in place, or its summary.
+  - **Export…** saves the summary and the transcript as one Markdown file.
+  - **Share** sends the call's files with AirDrop, Mail, Messages and so on.
+  - **Show in Finder** and **Copy** do what they say.
 - **Answers from Claude** (`claude-sonnet-5-5`), shown under the transcript as they're written. There are four ways to ask:
   - **Auto-Answer** (the lightning-bolt button): when the other side asks something, Claude answers once they pause. It answers every question it spots, small talk included, so turn it off during chit-chat.
   - **Answer Now** (the sparkles button, or **⌃⌥A** from any app): Claude helps you respond to what they just said.
@@ -54,6 +59,23 @@ project's code or your resume), and saves each call as a Markdown transcript.
   - feature ideas for the app, which you can keep in `Feature Ideas.md` for a developer, or copy
 
   Nothing changes until you click **Add** or **Keep**. Every choice is logged in `Learning.md`, so a skipped suggestion isn't made again.
+
+## Menus and shortcuts
+
+| Menu | Command | Shortcut |
+|---|---|---|
+| File | Past Calls | ⌘Y |
+| File | Open Sessions Folder, Copy Transcript | —, ⇧⌘C |
+| Call | Start Call / Stop Call | ⌘R |
+| Call | Answer Now (works from any app) | ⌃⌥A |
+| Call | Stop Answer | ⌘. |
+| Call | Auto-Answer | ⇧⌘A |
+| Call | Ask Claude… (puts the cursor in the field) | ⌘K |
+| Call | Quick Actions, in the row's order | ⌘1–⌘9 |
+| Call | Playbook, Call Notes…, Files…, Edit Always Instructions…, Review Suggestions… | — |
+| View | Summary (the side panel) | ⌥⌘S |
+| View | Summary in Its Own Window | — |
+| View | Keep on Top | ⌥⌘T |
 
 ## Requirements
 

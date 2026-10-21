@@ -28,6 +28,8 @@ struct PastCallsWindow: View {
 
     /// The list's widths (points).
     private static let listWidth: (min: CGFloat, ideal: CGFloat) = (220, 280)
+    /// The smallest the window can be: room for the list and a transcript (points).
+    private static let minimumSize = CGSize(width: 640, height: TranscriptWindow.minimumSize.height)
 
     var body: some View {
         NavigationSplitView {
@@ -49,11 +51,22 @@ struct PastCallsWindow: View {
                 }
             }
         } detail: {
-            detail
+            VStack(spacing: 0) {
+                detail
+                // An export or read failure, under whatever is shown.
+                if let failure {
+                    Divider()
+                    Text(failure)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
         }
         .searchable(text: $search, placement: .sidebar, prompt: "Search calls")
         .toolbar { toolbar }
-        .frame(minWidth: TranscriptWindow.minimumSize.width * 1.5, minHeight: TranscriptWindow.minimumSize.height)
+        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         .task { await reload() }
         .onChange(of: selection) { load() }
         // Searching shows the first match rather than a call it filtered out.
@@ -92,7 +105,7 @@ struct PastCallsWindow: View {
                         VStack(alignment: .leading) {
                             if let updated = content.summaryUpdated {
                                 Text("Updated \(updated)")
-                                    .font(.caption)
+                                    .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                             SummaryDocument(summary: summary, previous: nil)
@@ -108,14 +121,8 @@ struct PastCallsWindow: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-        } else if let failure {
-            Text(failure)
-                .font(.callout)
-                .foregroundStyle(.red)
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            Text(calls.isEmpty ? "" : "Choose a call to see its transcript and summary.")
+            Text(calls.isEmpty || failure != nil ? "" : "Choose a call to see its transcript and summary.")
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding()
@@ -140,12 +147,11 @@ struct PastCallsWindow: View {
             .disabled(selected == nil)
             .help("Save the call's summary and transcript as one Markdown file")
 
-            if let call = selected {
-                ShareLink(items: files(of: call)) {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                }
-                .help("Send the call's files with AirDrop, Mail, Messages and others")
+            ShareLink(items: selected.map(files(of:)) ?? []) {
+                Label("Share", systemImage: "square.and.arrow.up")
             }
+            .disabled(selected == nil)
+            .help("Send the call's files with AirDrop, Mail, Messages and others")
 
             Button(action: showInFinder) {
                 Label("Show in Finder", systemImage: "folder")
@@ -154,10 +160,10 @@ struct PastCallsWindow: View {
             .help("Show the call's files in Finder")
 
             Button(action: copy) {
-                Label("Copy", systemImage: "doc.on.doc")
+                Label(showing == .transcript ? "Copy Transcript" : "Copy Summary", systemImage: "doc.on.doc")
             }
-            .disabled(selected == nil)
-            .help(showing == .transcript ? "Copy the transcript as Markdown" : "Copy the summary as Markdown")
+            .disabled(selected == nil || (showing == .summary && selected?.summaryFile == nil))
+            .help(showing == .transcript ? "Copy the transcript as text" : "Copy the summary as Markdown")
         }
     }
 
@@ -176,8 +182,8 @@ struct PastCallsWindow: View {
         }.value
         self.calls = calls
         searchText = texts
-        if selection == nil || !calls.contains(where: { $0.id == selection }) {
-            selection = calls.first?.id
+        if !filteredCalls.contains(where: { $0.id == selection }) {
+            selection = filteredCalls.first?.id
         }
         load()
     }
@@ -185,6 +191,7 @@ struct PastCallsWindow: View {
     private func load() {
         guard let call = selected else {
             content = nil
+            failure = nil
             return
         }
         do {
@@ -265,8 +272,8 @@ private struct PastCallRow: View {
     /// "8 min · 99 lines · 3 answers".
     private var details: String {
         let minutes = max(Int((call.duration / 60).rounded()), call.lineCount > 0 ? 1 : 0)
-        let answers = call.answerCount == 1 ? "1 answer" : "\(call.answerCount) answers"
-        let lines = call.lineCount == 1 ? "1 line" : "\(call.lineCount) lines"
+        let answers = call.answerCount == 1 ? "1 answer" : "\(call.answerCount.formatted()) answers"
+        let lines = call.lineCount == 1 ? "1 line" : "\(call.lineCount.formatted()) lines"
         return "\(minutes) min · \(lines) · \(answers)"
     }
 }
@@ -314,6 +321,7 @@ private struct PastCallTranscript: View {
                         case .line(let line):
                             TranscriptLine(time: line.start, speaker: line.speaker, text: line.text)
                         case .answer(let answer):
+                            // Boxed, so Claude's answers stand apart from the lines around them.
                             GroupBox {
                                 AnswerView(answer: answer)
                                     .frame(maxWidth: .infinity, alignment: .leading)
