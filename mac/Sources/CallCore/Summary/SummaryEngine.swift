@@ -20,7 +20,11 @@ public struct SummaryVersion: Sendable, Equatable {
 @Observable
 public final class SummaryEngine {
     /// The version on screen and when it was made.
-    public private(set) var shown: SummaryVersion?
+    public private(set) var shown: SummaryVersion? {
+        didSet { if shown != oldValue { previous = oldValue?.summary } }
+    }
+    /// The version shown before this one, to mark what's new or changed.
+    public private(set) var previous: CallSummary?
     /// A newer version waiting for Jace to finish reading.
     public private(set) var pending: SummaryVersion?
     public private(set) var isUpdating = false
@@ -83,7 +87,9 @@ public final class SummaryEngine {
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
                 guard !Task.isCancelled, let self else { return }
-                await self.updateIfNew()
+                // In a task of its own, so stopping the loop doesn't cancel a
+                // request already on its way.
+                await Task { await self.updateIfNew() }.value
             }
         }
     }
@@ -93,6 +99,8 @@ public final class SummaryEngine {
     public func finish() async {
         loop?.cancel()
         loop = nil
+        // Let an update already under way land first.
+        while isUpdating { try? await Task.sleep(for: .milliseconds(100)) }
         await updateIfNew()
     }
 
@@ -101,6 +109,7 @@ public final class SummaryEngine {
         loop?.cancel()
         loop = nil
         shown = nil
+        previous = nil
         pending = nil
         failure = nil
         summarizedCount = 0
@@ -137,6 +146,8 @@ public final class SummaryEngine {
                 pending = nil
             }
             onUpdate?(summary, now)
+        } catch is CancellationError {
+            // A new call or the app closing; nothing to report.
         } catch {
             guard call == generation else { return }
             failure = error.localizedDescription

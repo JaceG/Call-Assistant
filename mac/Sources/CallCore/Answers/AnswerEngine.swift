@@ -84,6 +84,8 @@ public struct Answer: Identifiable, Sendable, Equatable {
 public final class AnswerEngine {
     public private(set) var answers: [Answer] = []
     public var autoAnswer = false
+    /// Instructions for every call (Always.md).
+    public var always = ""
     public var playbook: Playbook?
     public var callNotes = ""
     /// The folders and files picked for the call, read as text.
@@ -192,7 +194,7 @@ public final class AnswerEngine {
     // MARK: Running answers
 
     private var promptBuilder: PromptBuilder {
-        PromptBuilder(playbook: playbook, callNotes: callNotes, files: files)
+        PromptBuilder(always: always, playbook: playbook, callNotes: callNotes, files: files)
     }
 
     /// Caches the instructions and files before the first question, so it's

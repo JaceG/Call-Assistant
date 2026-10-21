@@ -22,6 +22,9 @@ public struct QuickAction: Codable, Identifiable, Sendable, Equatable {
             && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// Where the app keeps the buttons, as JSON in its settings.
+    public static let storageKey = "quickActions"
+
     /// The buttons Jace chose to start with (2026-10-21).
     public static let starters = [
         QuickAction(name: "Shorter", prompt: "Make that shorter."),

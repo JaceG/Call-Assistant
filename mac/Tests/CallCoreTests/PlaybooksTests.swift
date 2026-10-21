@@ -52,4 +52,16 @@ struct PlaybooksTests {
         try Self.write("Fine.", to: "Good.md", in: folder)
         #expect(try PlaybookLibrary(directory: folder).load().map(\.name) == ["Good"])
     }
+
+    @Test func alwaysInstructionsAreEmptyUntilSavedAndGrowLineByLine() throws {
+        let file = try Self.emptyFolder().appendingPathComponent("Always.md")
+        let always = AlwaysInstructions(file: file)
+        #expect(always.load() == "")
+        try always.append("Keep the longer answer to two sentences.")
+        try always.append("I have eight years of Swift.")
+        #expect(always.load() == "Keep the longer answer to two sentences.\nI have eight years of Swift.")
+        try always.save("  \n")
+        #expect(always.load() == "")
+    }
 }
+

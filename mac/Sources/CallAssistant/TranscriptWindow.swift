@@ -18,14 +18,18 @@ struct TranscriptWindow: View {
     static let playbookByDefault = "General"
     /// The folders and files picked for Claude, one path per line.
     static let filesKey = "files"
+    /// Whether the summary side panel is open.
+    static let showsSummaryKey = "showsSummary"
 
     @AppStorage(keepOnTopKey) private var keepOnTop = keepOnTopByDefault
     @AppStorage(autoAnswerKey) private var autoAnswer = autoAnswerByDefault
     @AppStorage(playbookKey) private var playbookName = playbookByDefault
     @AppStorage(filesKey) private var filePaths = ""
+    @AppStorage(showsSummaryKey) private var showsSummary = false
     @State private var playbooks: [Playbook] = []
     @State private var showingNotes = false
     @State private var showingFiles = false
+    @State private var editingAlways = false
     @State private var readingFiles = false
     /// Counts reads of the picks, so an older, slower read can't replace a newer one.
     @State private var filesRead = 0
@@ -35,6 +39,8 @@ struct TranscriptWindow: View {
 
     /// How close to the bottom still counts as "at the bottom" (points).
     private static let bottomTolerance: CGFloat = 24
+    /// The summary side panel's widths (points).
+    private static let summaryWidth: (min: CGFloat, ideal: CGFloat, max: CGFloat) = (280, 340, 560)
     /// The Call Notes editor's size (points).
     static let notesSize = CGSize(width: 320, height: 180)
 
@@ -49,11 +55,21 @@ struct TranscriptWindow: View {
             Divider()
             StatusBar(state: session.state)
         }
+        .inspector(isPresented: $showsSummary) {
+            SummaryPanel(session: session, canPopOut: true)
+                .inspectorColumnWidth(min: Self.summaryWidth.min, ideal: Self.summaryWidth.ideal, max: Self.summaryWidth.max)
+        }
         .toolbar { toolbar }
         .frame(minWidth: 420, minHeight: 300)
         .onAppear {
             session.answers.autoAnswer = autoAnswer
             reloadPlaybooks()
+        }
+        .sheet(isPresented: $editingAlways) {
+            AlwaysEditor(text: AlwaysInstructions().load()) { text in
+                try? AlwaysInstructions().save(text)
+                session.answers.always = AlwaysInstructions().load()
+            }
         }
         .task { await readFiles() }
         .onChange(of: autoAnswer) { session.answers.autoAnswer = autoAnswer }
@@ -156,6 +172,8 @@ struct TranscriptWindow: View {
                     }
                 }
                 .pickerStyle(.inline)
+                Divider()
+                Button("Edit Always Instructions…") { editingAlways = true }
             } label: {
                 Label(playbookName.isEmpty ? "No Playbook" : playbookName, systemImage: "list.bullet.rectangle")
             }
@@ -199,6 +217,12 @@ struct TranscriptWindow: View {
             }
             .toggleStyle(.button)
             .help(autoAnswer ? "Stop answering their questions automatically" : "Answer their questions automatically")
+
+            Toggle(isOn: $showsSummary) {
+                Label("Summary", systemImage: "sidebar.right")
+            }
+            .toggleStyle(.button)
+            .help(showsSummary ? "Hide the call's running summary" : "Show the call's running summary")
         }
     }
 
@@ -244,6 +268,7 @@ struct TranscriptWindow: View {
     /// Reads the Playbooks folder again. If it can't be read, the list and
     /// the choice stay as they were rather than falling back to none.
     private func reloadPlaybooks() {
+        session.answers.always = AlwaysInstructions().load()
         guard let loaded = try? PlaybookLibrary().load() else { return }
         playbooks = loaded
         if !playbookName.isEmpty && !loaded.contains(where: { $0.name == playbookName }) {

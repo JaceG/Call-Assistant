@@ -47,7 +47,7 @@ public struct PromptBuilder: Sendable {
         If it's unclear what they asked, the quick answer is a short, natural question to ask them back.
         When Jace types a question to you himself, use the same two parts, with the direct answer first.
 
-        Follow the playbook and the notes for this call when they're given. When files for this call are \
+        Follow the Always instructions, the playbook and the notes for this call when they're given. When files for this call are \
         given and a question is about them, answer from what the files say.
         """
 
@@ -55,13 +55,16 @@ public struct PromptBuilder: Sendable {
 
     public static let filesHeading = "# Files for this call"
 
+    private let always: String
     private let playbook: Playbook?
     private let callNotes: String
     private let files: CallFiles
     private let chunkSize: Int
     private let timeZone: TimeZone
 
-    public init(playbook: Playbook?, callNotes: String, files: CallFiles = .none, chunkSize: Int = 10, timeZone: TimeZone = .current) {
+    public init(always: String = "", playbook: Playbook?, callNotes: String, files: CallFiles = .none,
+                chunkSize: Int = 10, timeZone: TimeZone = .current) {
+        self.always = always.trimmingCharacters(in: .whitespacesAndNewlines)
         self.playbook = playbook
         self.callNotes = callNotes.trimmingCharacters(in: .whitespacesAndNewlines)
         self.files = files
@@ -93,11 +96,15 @@ public struct PromptBuilder: Sendable {
         prompt(entries: lines.map(TranscriptEntry.line), themSaying: themSaying, question: question)
     }
 
-    /// Base, files, playbook, notes. The files come before the notes so that
-    /// editing the notes mid-call keeps the files cached; their breakpoint
-    /// lasts an hour, since answers can be more than five minutes apart.
+    /// Base, Always, files, playbook, notes. The files come before the notes
+    /// so that editing the notes mid-call keeps the files cached; their
+    /// breakpoint lasts an hour, since answers can be more than five minutes
+    /// apart. Always changes least, so it sits before them.
     private func system() -> [PromptBlock] {
         var blocks = [PromptBlock(text: Self.basePrompt)]
+        if !always.isEmpty {
+            blocks.append(PromptBlock(text: "# Always\n\n\(always)"))
+        }
         if !files.isEmpty {
             blocks.append(PromptBlock(text: Self.filesText(files), cacheBreakpoint: true, cachesForAnHour: true))
         }

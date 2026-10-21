@@ -14,6 +14,34 @@ public struct Playbook: Identifiable, Sendable, Equatable {
     }
 }
 
+/// Instructions Claude follows on every call, whatever the playbook: one
+/// Markdown file Jace edits in the app, and that accepted suggestions from
+/// the review after a call are added to.
+public struct AlwaysInstructions: Sendable {
+    public let file: URL
+
+    public init(file: URL = Paths.alwaysFile) {
+        self.file = file
+    }
+
+    /// The instructions, or "" when there are none yet.
+    public func load() -> String {
+        (try? String(contentsOf: file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    public func save(_ text: String) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        try Data((trimmed.isEmpty ? "" : trimmed + "\n").utf8).write(to: file, options: .atomic)
+    }
+
+    /// Adds one instruction on its own line at the end.
+    public func append(_ instruction: String) throws {
+        let current = load()
+        try save(current.isEmpty ? instruction : current + "\n" + instruction)
+    }
+}
+
 /// The folder of playbook files.
 public struct PlaybookLibrary: Sendable {
     public let directory: URL

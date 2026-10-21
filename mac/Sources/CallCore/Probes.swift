@@ -228,7 +228,19 @@ extension Probes {
         print("listening for \(seconds) s, transcript: \(session.sessionFile?.path ?? "-")")
 
         var printed = Set<UUID>()
+        var summaryPrinted: Date?
+        let started = Date()
+        func printSummary() {
+            guard let shown = session.summary.shown, shown.at != summaryPrinted else { return }
+            summaryPrinted = shown.at
+            let new = CallSummary.Part.allCases.reduce(0) { count, part in
+                count + shown.summary.texts(part).filter { CallSummary.isNew($0, in: part, since: session.summary.previous) }.count
+            }
+            print(String(format: "=== SUMMARY at +%.0f s (%d new or changed items)", shown.at.timeIntervalSince(started), new))
+            print(shown.summary.markdown(updatedAt: shown.at))
+        }
         func printNew() {
+            printSummary()
             for utterance in session.store.utterances where !printed.contains(utterance.id) {
                 printed.insert(utterance.id)
                 print("[\(clock(utterance.start))] \(utterance.speaker.label): \(utterance.text)")
@@ -256,6 +268,14 @@ extension Probes {
         print("stopping…")
         await session.stop()
         printNew()
+        // The last summary is made after Stop returns.
+        for _ in 0..<120 {
+            try? await Task.sleep(for: .milliseconds(250))
+            if !session.summary.isUpdating { break }
+        }
+        printSummary()
+        if let failure = session.summary.failure { print("summary failed: \(failure)") }
+        print("summary file: \(session.summaryFile.map { FileManager.default.fileExists(atPath: $0.path) ? $0.path : "missing: \($0.path)" } ?? "-")")
 
         let counts = Dictionary(grouping: session.store.utterances, by: \.speaker).mapValues(\.count)
         let me = counts[.me] ?? 0

@@ -82,6 +82,16 @@ struct PromptBuilderTests {
         #expect(prompt.lookup == nil)
     }
 
+    @Test func alwaysComesRightAfterTheBase() {
+        let files = CallFiles(files: [ContextFile(path: "a.txt", text: "a")], skipped: [])
+        let system = PromptBuilder(always: "  Keep it to two sentences.\n", playbook: Self.playbook, callNotes: "Notes.", files: files)
+            .prompt(lines: [], themSaying: nil, question: .typed("Hi?")).system
+        #expect(system.map { $0.text.components(separatedBy: "\n").first ?? "" }
+            == [system[0].text.components(separatedBy: "\n").first ?? "", "# Always", "# Files for this call", "# Playbook: Interview", "# Notes for this call"])
+        #expect(system[1].text == "# Always\n\nKeep it to two sentences.")
+        #expect(system.map(\.cacheBreakpoint) == [false, false, true, false, true])
+    }
+
     @Test func noFilesMeansNoFilesBlock() {
         let system = Self.builder().prompt(lines: [], themSaying: nil, question: .typed("Hi?")).system
         #expect(!system.contains { $0.text.hasPrefix(PromptBuilder.filesHeading) })

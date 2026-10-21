@@ -167,4 +167,54 @@ struct SummaryEngineTests {
         let schema = try #require(try JSONSerialization.jsonObject(with: CallSummary.schema) as? [String: Any])
         #expect((schema["required"] as? [String])?.contains("names_and_numbers") == true)
     }
+
+    @Test func theVersionBeforeIsKeptToMarkWhatsNew() async {
+        let engine = SummaryEngine(provider: FakeSummarizer())
+        await engine.update(lines: Self.lines(1))
+        #expect(engine.previous == nil)
+        await engine.update(lines: Self.lines(2))
+        #expect(engine.previous?.summary == "Version 1")
+        engine.isHeld = true
+        await engine.update(lines: Self.lines(3))
+        #expect(engine.previous?.summary == "Version 1")   // still showing version 2
+        engine.applyPending()
+        #expect(engine.previous?.summary == "Version 2")
+    }
+
+    @Test func onlyItemsNotInThePreviousVersionAreNew() {
+        let before = CallSummary(summary: "S", keyPoints: ["Kept", "Dropped"], actionItems: [.init(owner: "Jace", item: "Send it")])
+        let after = CallSummary(summary: "S2", keyPoints: ["Kept", "Added"], actionItems: [.init(owner: "Them", item: "Send it")])
+        #expect(!CallSummary.isNew("Kept", in: .keyPoints, since: before))
+        #expect(CallSummary.isNew("Added", in: .keyPoints, since: before))
+        #expect(CallSummary.isNew(after.summary, in: .summary, since: before))
+        #expect(CallSummary.isNew(after.texts(.actionItems)[0], in: .actionItems, since: before))
+        #expect(!CallSummary.isNew("Added", in: .keyPoints, since: nil))
+    }
+
+    @Test func finishWaitsForAnUpdateUnderWayThenCoversTheRest() async throws {
+        let provider = SlowSummarizer()
+        let engine = SummaryEngine(provider: provider, interval: .milliseconds(50))
+        var lines = Self.lines(2)
+        engine.start { lines }
+        try await Task.sleep(for: .milliseconds(120))   // the first request is under way
+        #expect(engine.isUpdating)
+        lines = Self.lines(5)
+        await engine.finish()
+        #expect(engine.failure == nil)
+        #expect(provider.count == 2)
+        #expect(engine.shown?.summary.summary == "Version 2")
+    }
 }
+
+/// Like FakeSummarizer, but each reply takes 200 ms.
+final class SlowSummarizer: StructuredProvider, Sendable {
+    private let calls = OSAllocatedUnfairLock(initialState: 0)
+    var count: Int { calls.withLock { $0 } }
+
+    func json(_ prompt: AnswerPrompt, schema: Data) async throws -> Data {
+        let count = calls.withLock { $0 += 1; return $0 }
+        try await Task.sleep(for: .milliseconds(200))
+        return Data(CallSummary(summary: "Version \(count)").json().utf8)
+    }
+}
+

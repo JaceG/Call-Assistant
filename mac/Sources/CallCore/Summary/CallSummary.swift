@@ -66,6 +66,35 @@ public struct CallSummary: Codable, Sendable, Equatable {
         self.next = next
     }
 
+    // MARK: What changed
+
+    /// The parts of the summary, for comparing one version with the last.
+    public enum Part: Sendable, CaseIterable {
+        case summary, keyPoints, questions, quotes, decisions, actionItems, openQuestions, namesAndNumbers, next
+    }
+
+    /// Each item of a part as text, as compared between versions.
+    public func texts(_ part: Part) -> [String] {
+        switch part {
+        case .summary: [summary]
+        case .keyPoints: keyPoints
+        case .questions: questions.map { "\($0.askedBy): \($0.question)\n\($0.answer)" }
+        case .quotes: quotes.map(\.words)
+        case .decisions: decisions
+        case .actionItems: actionItems.map { "\($0.owner): \($0.item)" }
+        case .openQuestions: openQuestions
+        case .namesAndNumbers: namesAndNumbers
+        case .next: next
+        }
+    }
+
+    /// Whether `text` is new or changed since `previous`. With no previous
+    /// version (the first one), nothing is marked.
+    public static func isNew(_ text: String, in part: Part, since previous: CallSummary?) -> Bool {
+        guard let previous else { return false }
+        return !previous.texts(part).contains(text)
+    }
+
     // MARK: JSON
 
     /// The JSON Schema Claude's reply must match (snake_case keys).

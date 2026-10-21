@@ -23,6 +23,8 @@ public final class LiveSession {
     public let answers: AnswerEngine
     /// The call's running summary, saved beside the transcript.
     public let summary: SummaryEngine
+    /// Suggestions from the review after the last call.
+    public let reviews: ReviewInbox
     /// The current (or last) call's transcript file.
     public private(set) var sessionFile: URL?
     /// WebRTC's echo canceller: removes the speakers' sound from the mic, using
@@ -54,10 +56,12 @@ public final class LiveSession {
         self.sessionsDirectory = sessionsDirectory
         answers = AnswerEngine(provider: provider)
         summary = SummaryEngine(provider: summarizer)
+        reviews = ReviewInbox(reviewer: SessionReviewer(provider: summarizer))
         answers.onFinished = { [weak self] answer in self?.save(answer) }
         answers.pendingMine = { [weak self] in self?.pendingMine() ?? [] }
         summary.callNotes = { [weak self] in self?.answers.callNotes ?? "" }
         summary.onUpdate = { [weak self] summary, at in self?.saveSummary(summary, at: at) }
+        reviews.onAlwaysChanged = { [weak self] text in self?.answers.always = text }
     }
 
     /// The stand-in question a warm request carries; it's read, never answered.
@@ -188,8 +192,12 @@ public final class LiveSession {
         writer?.close()
         writer = nil
         state = .idle
-        // A last summary covering the end of the call, after Stop returns.
+        // A last summary covering the end of the call, and the review, after
+        // Stop returns.
         Task { await summary.finish() }
+        let call = sessionFile?.deletingPathExtension().lastPathComponent ?? "a call"
+        let lines = store.utterances, answers = answers.answers
+        Task { await reviews.review(call: call, lines: lines, answers: answers) }
     }
 
     /// The summary file beside the call's transcript: "<day> <time> summary.md".

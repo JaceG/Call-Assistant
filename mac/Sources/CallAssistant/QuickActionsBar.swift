@@ -8,7 +8,7 @@ struct QuickActionsBar: View {
     let run: (QuickAction) -> Void
 
     /// Where the buttons are kept, as JSON (see QuickAction.decode).
-    static let storageKey = "quickActions"
+    static let storageKey = QuickAction.storageKey
 
     @State private var editing = false
 
