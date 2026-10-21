@@ -39,6 +39,21 @@ project's code or your resume), and saves each call as a Markdown transcript.
   - **A playbook** is a Markdown file per kind of call (an interview, a client check-in), picked from the **Playbook** menu.
   - **Call Notes** are for this one call (who it's with, what it's about).
 - **Files** (the books button): folders and files Claude uses in its answers, such as a project's code for a technical call or your resume for an interview. See [Files](#files).
+- **Always instructions** (**Playbook** menu > **Edit Always Instructions…**): instructions Claude follows on every call, whatever playbook you pick, such as facts about you or how long answers should be.
+- **A live summary** (the **Summary** button, top right): a running document of the call in a side panel. The pop-out button opens it in its own window. It holds:
+  - a short summary and key points
+  - their questions with what was said back
+  - quotes, decisions and action items
+  - open questions, and names and numbers mentioned
+  - where the conversation could go next
+
+  It updates at most once a minute, only when something new was said. Items new since the last update are highlighted until the next one. While your pointer is over the summary, a new version waits and an **Update Now** button appears. It's saved beside the call's transcript as `<day> <time> summary.md`, and **Copy** copies it as Markdown.
+- **Suggestions after each call.** When you press Stop, Claude reviews how you used the app: what you asked to shorten, what you typed, and what you actually said. After about 10 seconds the status bar shows **Review N Suggestions**. It opens a sheet with:
+  - lines to add to your Always instructions
+  - new quick-action buttons
+  - feature ideas for the app, which you can keep in `Feature Ideas.md` for a developer, or copy
+
+  Nothing changes until you click **Add** or **Keep**. Every choice is logged in `Learning.md`, so a skipped suggestion isn't made again.
 
 ## Requirements
 
@@ -81,6 +96,7 @@ It asks for the key twice and doesn't show it. The first time the app reads it, 
 - Late in an hour-long call, up to about 3–4 cents for an answer that can't use the cache.
 - Prompt caching re-reads earlier parts of the transcript at a tenth of the price, which brings a late answer to about 1 cent. In a test with a 120-line transcript, every answer after the first read 5,289 cached tokens.
 - Picked files add to this; [Files](#files) has the figures.
+- The live summary costs about 1 cent per update, so about 60 cents for an hour-long call (an estimate). The review after a call is a few cents.
 
 ### Playbooks
 
@@ -132,7 +148,7 @@ open mac/dist/CallAssistant.app --stdout /tmp/ca.log --stderr /tmp/ca.log --args
 
 - `--probe-audio N`: mic and system-audio levels once a second. Add `--apple-voice-processing` to use Apple's voice processing.
 - `--probe-transcribe <file>`: transcribes an audio file as if it were live.
-- `--probe-live N`: a whole call without the window. The flags `--no-echo-canceller`, `--no-echo-filter` and `--apple-voice-processing` turn each echo method on or off. Add `--auto-answer` to have Claude answer the questions it spots, with timings.
+- `--probe-live N`: a whole call without the window. The flags `--no-echo-canceller`, `--no-echo-filter` and `--apple-voice-processing` turn each echo method on or off. Add `--auto-answer` to have Claude answer the questions it spots, with timings. Each live summary is printed as it arrives.
 - `--probe-answer "<question>"`: asks Claude and prints the time to the first words, the token counts (including cache reads) and the answer. Options:
   - `--runs N`
   - `--transcript <call.md>`
@@ -145,6 +161,8 @@ open mac/dist/CallAssistant.app --stdout /tmp/ca.log --stderr /tmp/ca.log --args
   - `--detected` or `--answer-now`: ask the way Auto-Answer or Answer Now does, instead of as a typed question.
 - `--probe-follow-up "<question>" "<follow-up>"...`: types each question in turn, waiting for each answer, so later ones can refer to earlier answers ("Make that shorter").
 - `--probe-detect <call.md>`: replays a saved call and lists the lines Auto-Answer would answer. It makes no API call.
+- `--probe-summary <call.md>`: summarizes the first 60% of a saved call, then all of it building on the first version, and prints both.
+- `--probe-review <call.md>`: reviews a saved call as the app would after Stop and prints the suggestions. It writes nothing.
 - `--probe-files <folder or file>...`: reads picks as a call would and prints the file count, the size, whole or search, the largest files and what was skipped. It makes no API call.
 
 Unit tests: `cd mac && swift test`.

@@ -116,3 +116,40 @@ Empty sections are hidden. "Decisions", "Action items", "Open questions" and "Na
 ## Checkpoint
 
 After Task 3, show Jace the summary panel updating on a mock call. Then go on.
+
+## Results (2026-10-21)
+
+**Mid-build request from Jace:** "When lines are just updated or added, highlight them until the next change so I can quickly see the new changes."
+- Each item that isn't in the previous version is highlighted with the system's find-highlight colour until the next version.
+- VoiceOver reads it as "New". The first version highlights nothing.
+
+**Summary:**
+- `--probe-summary` on the saved mock interview took 10 s per version. The second version kept every earlier point word for word and added three.
+- `--probe-live 200`, with a YouTube mock interview playing in the built-in browser:
+  - Versions came at +66 s and +134 s, the second with 7 new or changed items.
+  - The content was accurate: the requirements, the open questions, and "Name the core classes, such as Book, Page, Library…".
+  - **It found a bug.** The final version at Stop failed with a CancellationError, because stopping the loop cancelled the request already under way.
+  - **Fixed and unit-tested.** Updates now run in a task of their own, and Stop waits for the one under way before making the last version.
+  - **Not re-run live,** because Jace was on a call.
+- **One mistake in the content.** Both voices in the video were "Them", so the summary called the candidate "Jace" once. On a real call, Jace is "Me".
+
+**Review:**
+- `--probe-review` on a made-up interview took 9.7 s. In that call:
+  - Shorter was pressed after three of four Auto replies, and once after a typed one.
+  - "give me a number I can quote" was typed twice.
+- The review suggested:
+  - instructions:
+    - a two-sentence limit
+    - plain first-person wording
+    - Jace's background as facts (8 years of Swift, SwiftUI since 2020, a team of three)
+    - his real figures (60 fps, launch time halved)
+  - a "Quote a number" button
+  - short Auto replies, as a feature
+- Every reason pointed at what happened.
+- **One clash to watch.** The two-sentence suggestion conflicts with the base prompt's two-part answer. Jace decides when he sees it.
+
+**Not tested in the window.**
+- My screenshot tools failed with "Screenshot capture returned nil (permission missing or SCContentFilter failure)", from both the per-app and full-screen capture.
+- Then Jace asked for the machine to stay quiet and his screen untouched during his call.
+- So the summary panel, the pop-out window, Update Now, the Always editor and the review sheet are unit-tested and checked by a separate agent, but have not been seen rendered.
+
