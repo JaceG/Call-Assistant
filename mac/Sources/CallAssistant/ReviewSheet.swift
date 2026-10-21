@@ -12,8 +12,6 @@ struct ReviewSheet: View {
 
     /// The sheet's size (points).
     private static let size = CGSize(width: 520, height: 520)
-    /// The gap between sections (points).
-    private static let sectionSpacing: CGFloat = 16
     /// Extra room above and below each suggestion (points).
     fileprivate static let suggestionPadding: CGFloat = 4
 
@@ -22,7 +20,9 @@ struct ReviewSheet: View {
             VStack(alignment: .leading) {
                 Text("Suggestions from This Call")
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Text(inbox.call)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .padding()
@@ -37,6 +37,8 @@ struct ReviewSheet: View {
             } else {
                 Text("Nothing left to decide.")
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             Divider()
@@ -44,6 +46,7 @@ struct ReviewSheet: View {
             HStack {
                 if let failure = inbox.failure {
                     Text(failure)
+                        .font(.callout)
                         .foregroundStyle(.red)
                         .lineLimit(2)
                 }
@@ -58,20 +61,26 @@ struct ReviewSheet: View {
             .padding()
         }
         .frame(width: Self.size.width, height: Self.size.height)
+        // Esc closes it, like Done.
+        .onExitCommand { dismiss() }
     }
 
     @ViewBuilder private func content(_ review: SessionReview) -> some View {
-        VStack(alignment: .leading, spacing: Self.sectionSpacing) {
+        VStack(alignment: .leading, spacing: HeadedSection<EmptyView>.spacing) {
             if !review.observations.isEmpty {
-                Section(title: "What Claude noticed") {
+                HeadedSection(title: "What Claude noticed") {
                     ForEach(Array(review.observations.enumerated()), id: \.offset) { _, observation in
-                        Text(observation)
-                            .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(verbatim: "•")
+                                .accessibilityHidden(true)
+                            Text(observation)
+                        }
+                        .foregroundStyle(.secondary)
                     }
                 }
             }
             if !review.instructions.isEmpty {
-                Section(title: "For your Always instructions") {
+                HeadedSection(title: "For your Always instructions") {
                     ForEach(review.instructions, id: \.self) { instruction in
                         Suggestion(text: instruction.text, reason: instruction.reason) {
                             Button("Add") { inbox.add(instruction) }
@@ -83,7 +92,7 @@ struct ReviewSheet: View {
                 }
             }
             if !review.quickActions.isEmpty {
-                Section(title: "New quick-action buttons") {
+                HeadedSection(title: "New quick-action buttons") {
                     ForEach(review.quickActions, id: \.self) { idea in
                         Suggestion(title: idea.name, text: idea.prompt, reason: idea.reason) {
                             Button("Add") { inbox.add(idea) }
@@ -95,7 +104,7 @@ struct ReviewSheet: View {
                 }
             }
             if !review.features.isEmpty {
-                Section(title: "Feature ideas for the app") {
+                HeadedSection(title: "Feature ideas for the app") {
                     ForEach(review.features, id: \.self) { idea in
                         Suggestion(title: idea.title, text: idea.description, reason: idea.reason) {
                             Button("Keep") { inbox.keep(idea) }
@@ -115,21 +124,6 @@ struct ReviewSheet: View {
     private func copy(_ idea: SessionReview.FeatureIdea) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("\(idea.title)\n\n\(idea.description)\n\nWhy: \(idea.reason)", forType: .string)
-    }
-
-    /// A heading and its items.
-    private struct Section<Content: View>: View {
-        let title: String
-        @ViewBuilder let content: Content
-
-        var body: some View {
-            VStack(alignment: .leading) {
-                Text(title)
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                content
-            }
-        }
     }
 
     /// One suggestion: its name (if any), what it is, Claude's reason, and

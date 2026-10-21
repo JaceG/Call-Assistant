@@ -37,7 +37,7 @@ struct CallAssistantApp: App {
         // The summary on its own, opened from the side panel.
         Window("Call Summary", id: SummaryPanel.windowID) {
             SummaryPanel(session: session)
-                .frame(minWidth: 280, minHeight: 300)
+                .frame(minWidth: TranscriptWindow.summaryWidth.min, minHeight: TranscriptWindow.minimumSize.height)
         }
         .windowLevel(keepOnTop ? .floating : .normal)
         .defaultLaunchBehavior(.suppressed)

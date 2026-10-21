@@ -34,8 +34,10 @@ struct SummaryPanel: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        // Reading holds the next version back (see SummaryEngine).
+        // Reading holds the next version back (see SummaryEngine); a closed
+        // panel holds nothing.
         .onHover { engine.isHeld = $0 }
+        .onDisappear { engine.isHeld = false }
     }
 
     private func header(_ engine: SummaryEngine) -> some View {
@@ -106,17 +108,14 @@ private struct SummaryDocument: View {
     let summary: CallSummary
     let previous: CallSummary?
 
-    /// The gap between sections (points).
-    private static let sectionSpacing: CGFloat = 16
-
     var body: some View {
-        VStack(alignment: .leading, spacing: Self.sectionSpacing) {
+        VStack(alignment: .leading, spacing: HeadedSection<EmptyView>.spacing) {
             Text(summary.summary)
                 .modifier(NewMark(isNew: isNew(summary.summary, in: .summary)))
 
             section("Key points", .keyPoints)
             if !summary.questions.isEmpty {
-                Section(title: "Questions and answers") {
+                HeadedSection(title: "Questions and answers") {
                     ForEach(Array(zip(summary.questions, summary.texts(.questions)).enumerated()), id: \.offset) { _, pair in
                         VStack(alignment: .leading) {
                             Text("\(pair.0.askedBy): \(pair.0.question)")
@@ -129,7 +128,7 @@ private struct SummaryDocument: View {
                 }
             }
             if !summary.quotes.isEmpty {
-                Section(title: "Quotes") {
+                HeadedSection(title: "Quotes") {
                     ForEach(Array(summary.quotes.enumerated()), id: \.offset) { _, quote in
                         VStack(alignment: .leading) {
                             Text("\u{201C}\(quote.words)\u{201D}")
@@ -158,7 +157,7 @@ private struct SummaryDocument: View {
     @ViewBuilder private func section(_ title: String, _ part: CallSummary.Part) -> some View {
         let items = summary.texts(part)
         if !items.isEmpty {
-            Section(title: title) {
+            HeadedSection(title: title) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline) {
                         Text(verbatim: "•")
@@ -170,37 +169,45 @@ private struct SummaryDocument: View {
             }
         }
     }
+}
 
-    /// A heading and its items.
-    private struct Section<Content: View>: View {
-        let title: String
-        @ViewBuilder let content: Content
+/// A heading and the items under it, in the summary and the review sheet.
+struct HeadedSection<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
 
-        var body: some View {
-            VStack(alignment: .leading) {
-                Text(title)
-                    .font(.headline)
-                    .accessibilityAddTraits(.isHeader)
-                content
-            }
+    /// The gap between one section and the next (points).
+    static var spacing: CGFloat { 16 }
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(title)
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
+            content
         }
     }
 }
 
-/// The highlight on a new or changed item, which VoiceOver reads as "New".
+/// One summary item as one VoiceOver item, highlighted when it's new or
+/// changed (VoiceOver reads that as "New").
 private struct NewMark: ViewModifier {
     let isNew: Bool
 
     /// The highlight's corner radius (points).
     private static let cornerRadius: CGFloat = 3
+    /// How strongly the find-highlight colour shows behind the text.
+    private static let highlightOpacity = 0.35
 
     func body(content: Content) -> some View {
         if isNew {
             content
-                .background(Color(nsColor: .findHighlightColor).opacity(0.35), in: .rect(cornerRadius: Self.cornerRadius))
+                .background(Color(nsColor: .findHighlightColor).opacity(Self.highlightOpacity), in: .rect(cornerRadius: Self.cornerRadius))
+                .accessibilityElement(children: .combine)
                 .accessibilityValue("New")
         } else {
             content
+                .accessibilityElement(children: .combine)
         }
     }
 }

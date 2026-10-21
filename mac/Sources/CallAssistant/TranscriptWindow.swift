@@ -41,7 +41,9 @@ struct TranscriptWindow: View {
     /// How close to the bottom still counts as "at the bottom" (points).
     private static let bottomTolerance: CGFloat = 24
     /// The summary side panel's widths (points).
-    private static let summaryWidth: (min: CGFloat, ideal: CGFloat, max: CGFloat) = (280, 340, 560)
+    static let summaryWidth: (min: CGFloat, ideal: CGFloat, max: CGFloat) = (280, 340, 560)
+    /// The smallest the window (and the summary's own window) can be (points).
+    static let minimumSize = CGSize(width: 420, height: 300)
     /// The Call Notes editor's size (points).
     static let notesSize = CGSize(width: 320, height: 180)
 
@@ -61,7 +63,7 @@ struct TranscriptWindow: View {
                 .inspectorColumnWidth(min: Self.summaryWidth.min, ideal: Self.summaryWidth.ideal, max: Self.summaryWidth.max)
         }
         .toolbar { toolbar }
-        .frame(minWidth: 420, minHeight: 300)
+        .frame(minWidth: Self.minimumSize.width, minHeight: Self.minimumSize.height)
         .onAppear {
             session.answers.autoAnswer = autoAnswer
             reloadPlaybooks()
@@ -71,7 +73,7 @@ struct TranscriptWindow: View {
         }
         .sheet(isPresented: $editingAlways) {
             AlwaysEditor(text: AlwaysInstructions().load()) { text in
-                try? AlwaysInstructions().save(text)
+                try AlwaysInstructions().save(text)
                 session.answers.always = AlwaysInstructions().load()
             }
         }
