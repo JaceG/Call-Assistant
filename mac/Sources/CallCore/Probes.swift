@@ -444,14 +444,7 @@ extension Probes {
     /// The lines of a saved call file ("**[14:13:25] Them:** text"), dated
     /// today. Answers and other text in the file are skipped.
     static func transcriptLines(in text: String) -> [Utterance] {
-        let pattern = /^\*\*\[(\d\d):(\d\d):(\d\d)\] (Me|Them):\*\* (.+)$/
-        let today = Calendar.current.startOfDay(for: Date())
-        return text.split(separator: "\n").compactMap { line -> Utterance? in
-            guard let match = try? pattern.wholeMatch(in: String(line)),
-                  let h = Double(match.1), let m = Double(match.2), let s = Double(match.3) else { return nil }
-            let start = today + h * 3600 + m * 60 + s
-            return Utterance(speaker: match.4 == "Me" ? .me : .them, text: String(match.5), start: start, end: start)
-        }
+        SessionReader.lines(in: text, startedAt: Calendar.current.startOfDay(for: Date()))
     }
 }
 
@@ -549,33 +542,9 @@ extension Probes {
 }
 
 extension Probes {
-    /// Claude's answers in a saved call file: "> **[time] Claude** (Label):
-    /// *question*" and the quoted lines after it, dated today.
+    /// Claude's answers in a saved call file, dated today.
     static func answers(in text: String) -> [Answer] {
-        let header = /^> \*\*\[(\d\d):(\d\d):(\d\d)\] Claude\*\* \((.+?)\): \*(.*)\*$/
-        let today = Calendar.current.startOfDay(for: Date())
-        let triggers = Dictionary(uniqueKeysWithValues: [Answer.Trigger.auto, .answerNow, .typed, .quick].map { ($0.label, $0) })
-        var answers: [Answer] = []
-        var current: Answer?
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
-            if let match = try? header.wholeMatch(in: line), let h = Double(match.1), let m = Double(match.2), let s = Double(match.3) {
-                if let current { answers.append(current) }
-                current = Answer(trigger: triggers[String(match.4)] ?? .typed, question: String(match.5),
-                                 askedAt: today + h * 3600 + m * 60 + s, state: .done)
-            } else if line.hasPrefix(">"), current != nil {
-                let body = line.dropFirst().trimmingCharacters(in: .whitespaces)
-                current!.text += current!.text.isEmpty ? body : (body.isEmpty ? "\n\n" : " " + body)
-            } else if let finished = current {
-                answers.append(finished)
-                current = nil
-            }
-        }
-        if let current { answers.append(current) }
-        return answers.map { answer in
-            var answer = answer
-            answer.text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return answer
-        }
+        SessionReader.answers(in: text, startedAt: Calendar.current.startOfDay(for: Date()))
     }
 
     /// Reviews a saved call as the app would after Stop, with Always and the

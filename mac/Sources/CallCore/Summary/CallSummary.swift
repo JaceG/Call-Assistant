@@ -135,6 +135,54 @@ public struct CallSummary: Codable, Sendable, Equatable {
 
     // MARK: Markdown
 
+    /// A summary file read back (the inverse of `markdown`), with the time it
+    /// says it was updated; nil if it isn't one.
+    public static func parse(markdown: String) -> (summary: CallSummary, updated: String)? {
+        let lines = markdown.components(separatedBy: "\n")
+        guard lines.first == "# Call summary" else { return nil }
+        var updated = ""
+        var opening: [String] = []
+        var sections: [String: [String]] = [:]
+        var section: String?
+        for line in lines.dropFirst() {
+            if let match = try? /^\*Updated (.+)\*$/.wholeMatch(in: line), section == nil, updated.isEmpty {
+                updated = String(match.1)
+            } else if line.hasPrefix("## ") {
+                section = String(line.dropFirst(3))
+            } else if let section {
+                if !line.isEmpty { sections[section, default: []].append(line) }
+            } else if !line.isEmpty {
+                opening.append(line)
+            }
+        }
+
+        func items(_ title: String) -> [String] {
+            (sections[title] ?? []).compactMap { $0.hasPrefix("- ") ? String($0.dropFirst(2)) : nil }
+        }
+        var questions: [Exchange] = []
+        for line in sections["Questions and answers"] ?? [] {
+            if let match = try? /^- \*\*(.+?):\*\* (.*)$/.wholeMatch(in: line) {
+                questions.append(Exchange(askedBy: String(match.1), question: String(match.2), answer: ""))
+            } else if line.hasPrefix("  - "), !questions.isEmpty {
+                questions[questions.count - 1].answer = String(line.dropFirst(4))
+            }
+        }
+        let quotes = items("Quotes").compactMap { item -> Quote? in
+            guard let match = try? /^\u{201C}(.*)\u{201D} \((.+), (\d\d:\d\d:\d\d)\)$/.wholeMatch(in: item) else { return nil }
+            return Quote(speaker: String(match.2), time: String(match.3), words: String(match.1))
+        }
+        let actionItems = items("Action items").compactMap { item -> ActionItem? in
+            guard let match = try? /^\*\*(.+?):\*\* (.*)$/.wholeMatch(in: item) else { return nil }
+            return ActionItem(owner: String(match.1), item: String(match.2))
+        }
+        let summary = CallSummary(
+            summary: opening.joined(separator: "\n"), keyPoints: items("Key points"), questions: questions, quotes: quotes,
+            decisions: items("Decisions"), actionItems: actionItems, openQuestions: items("Open questions"),
+            namesAndNumbers: items("Names and numbers"), next: items("Where this could go next")
+        )
+        return (summary, updated)
+    }
+
     /// The summary as a Markdown document; empty sections are left out.
     public func markdown(updatedAt: Date, timeZone: TimeZone = .current) -> String {
         var out = ["# Call summary", "", "*Updated \(updatedAt.clockTime(in: timeZone))*", "", summary]

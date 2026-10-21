@@ -202,11 +202,7 @@ public final class LiveSession {
 
     /// The summary file beside the call's transcript: "<day> <time> summary.md".
     public var summaryFile: URL? {
-        sessionFile.map { file in
-            let name = file.deletingPathExtension().lastPathComponent
-            let base = name.hasSuffix(" call") ? String(name.dropLast(" call".count)) : name
-            return file.deletingLastPathComponent().appendingPathComponent("\(base) summary.md")
-        }
+        sessionFile.map(SessionReader.summaryFile(for:))
     }
 
     private func saveSummary(_ summary: CallSummary, at time: Date) {
