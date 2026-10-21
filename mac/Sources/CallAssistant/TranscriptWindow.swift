@@ -30,6 +30,7 @@ struct TranscriptWindow: View {
     @State private var showingNotes = false
     @State private var showingFiles = false
     @State private var editingAlways = false
+    @State private var reviewing = false
     @State private var readingFiles = false
     /// Counts reads of the picks, so an older, slower read can't replace a newer one.
     @State private var filesRead = 0
@@ -53,7 +54,7 @@ struct TranscriptWindow: View {
                 AnswersPane(session: session)
             }
             Divider()
-            StatusBar(state: session.state)
+            StatusBar(state: session.state, reviews: session.reviews) { reviewing = true }
         }
         .inspector(isPresented: $showsSummary) {
             SummaryPanel(session: session, canPopOut: true)
@@ -64,6 +65,9 @@ struct TranscriptWindow: View {
         .onAppear {
             session.answers.autoAnswer = autoAnswer
             reloadPlaybooks()
+        }
+        .sheet(isPresented: $reviewing) {
+            ReviewSheet(inbox: session.reviews)
         }
         .sheet(isPresented: $editingAlways) {
             AlwaysEditor(text: AlwaysInstructions().load()) { text in
@@ -338,9 +342,11 @@ private struct TranscriptLine: View {
 }
 
 /// Where the session is: ready, preparing (with download progress), listening,
-/// stopping, or what went wrong.
+/// stopping, or what went wrong; and, after a call, its suggestions.
 private struct StatusBar: View {
     let state: LiveSession.State
+    let reviews: ReviewInbox
+    let review: () -> Void
 
     var body: some View {
         HStack {
@@ -363,6 +369,13 @@ private struct StatusBar: View {
                     .foregroundStyle(.red)
             }
             Spacer(minLength: 0)
+            if reviews.isReviewing {
+                Text("Reviewing the call…")
+                    .foregroundStyle(.secondary)
+            } else if reviews.waiting > 0 {
+                Button("Review \(reviews.waiting) \(reviews.waiting == 1 ? "Suggestion" : "Suggestions")", action: review)
+                    .help("See what Claude suggests from this call")
+            }
         }
         .font(.callout)
         .padding()

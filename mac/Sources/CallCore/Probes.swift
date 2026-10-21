@@ -67,6 +67,12 @@ public enum Probes {
                 return 64
             }
             return await summary(of: text)
+        case "--probe-review":
+            guard let value, let text = try? String(contentsOf: URL(fileURLWithPath: value), encoding: .utf8) else {
+                print("Usage: --probe-review <call.md>")
+                return 64
+            }
+            return await review(of: text)
         case "--probe-files":
             let picks = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
             guard !picks.isEmpty else {
@@ -539,6 +545,71 @@ extension Probes {
             print(engine.shown?.summary.markdown(updatedAt: Date()) ?? "(none)")
         }
         return 0
+    }
+}
+
+extension Probes {
+    /// Claude's answers in a saved call file: "> **[time] Claude** (Label):
+    /// *question*" and the quoted lines after it, dated today.
+    static func answers(in text: String) -> [Answer] {
+        let header = /^> \*\*\[(\d\d):(\d\d):(\d\d)\] Claude\*\* \((.+?)\): \*(.*)\*$/
+        let today = Calendar.current.startOfDay(for: Date())
+        let triggers = Dictionary(uniqueKeysWithValues: [Answer.Trigger.auto, .answerNow, .typed, .quick].map { ($0.label, $0) })
+        var answers: [Answer] = []
+        var current: Answer?
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            if let match = try? header.wholeMatch(in: line), let h = Double(match.1), let m = Double(match.2), let s = Double(match.3) {
+                if let current { answers.append(current) }
+                current = Answer(trigger: triggers[String(match.4)] ?? .typed, question: String(match.5),
+                                 askedAt: today + h * 3600 + m * 60 + s, state: .done)
+            } else if line.hasPrefix(">"), current != nil {
+                let body = line.dropFirst().trimmingCharacters(in: .whitespaces)
+                current!.text += current!.text.isEmpty ? body : (body.isEmpty ? "\n\n" : " " + body)
+            } else if let finished = current {
+                answers.append(finished)
+                current = nil
+            }
+        }
+        if let current { answers.append(current) }
+        return answers.map { answer in
+            var answer = answer
+            answer.text = answer.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return answer
+        }
+    }
+
+    /// Reviews a saved call as the app would after Stop, with Always and the
+    /// quick actions as stored, and prints the suggestions. Writes nothing.
+    @MainActor
+    static func review(of text: String) async -> Int32 {
+        let key: String
+        do {
+            key = try APIKeyStore.read()
+        } catch {
+            print("RESULT no key: \(error.localizedDescription)")
+            return 2
+        }
+        let lines = transcriptLines(in: text)
+        let answers = answers(in: text)
+        print("\(lines.count) lines, \(answers.count) answers (\(Dictionary(grouping: answers, by: \.trigger.label).mapValues(\.count)))")
+        let reviewer = SessionReviewer(provider: ClaudeProvider(apiKey: { key }))
+        let started = ContinuousClock.now
+        do {
+            let review = try await reviewer.review(
+                lines: lines, answers: answers, always: AlwaysInstructions().load(),
+                quickActions: QuickAction.decode(UserDefaults.standard.string(forKey: QuickAction.storageKey) ?? ""),
+                learningLog: LearningLog().tail()
+            )
+            print("review in \(ContinuousClock.now - started)")
+            print("Observations:"); review.observations.forEach { print("  - \($0)") }
+            print("Instructions:"); review.instructions.forEach { print("  - \($0.text)\n      why: \($0.reason)") }
+            print("Quick actions:"); review.quickActions.forEach { print("  - \($0.name): \($0.prompt)\n      why: \($0.reason)") }
+            print("Features:"); review.features.forEach { print("  - \($0.title): \($0.description)\n      why: \($0.reason)") }
+            return 0
+        } catch {
+            print("FAILED: \(error.localizedDescription)")
+            return 1
+        }
     }
 }
 
