@@ -4,6 +4,8 @@ import SwiftUI
 
 struct CallAssistantApp: App {
     @State private var session: LiveSession
+    /// What the menu bar asks the call window to do.
+    @State private var controls = WindowControls()
     /// Floats the window above the call app; toggled from the window's toolbar.
     @AppStorage(TranscriptWindow.keepOnTopKey) private var keepOnTop = TranscriptWindow.keepOnTopByDefault
     /// ⌃⌥A: Answer Now, even while the call app is in front.
@@ -30,9 +32,10 @@ struct CallAssistantApp: App {
 
     var body: some Scene {
         Window("Call Assistant", id: "transcript") {
-            TranscriptWindow(session: session)
+            TranscriptWindow(session: session, controls: controls)
         }
         .windowLevel(keepOnTop ? .floating : .normal)
+        .commands { CallCommands(session: session, controls: controls) }
 
         // The summary on its own, opened from the side panel.
         Window("Call Summary", id: SummaryPanel.windowID) {

@@ -6,6 +6,8 @@ import SwiftUI
 /// arrive, Claude's answers under them, and a status bar.
 struct TranscriptWindow: View {
     let session: LiveSession
+    /// What the menu bar asks this window to do.
+    @Bindable var controls: WindowControls
 
     /// Keep on Top's stored setting, shared with the app's window level.
     static let keepOnTopKey = "keepOnTop"
@@ -27,10 +29,6 @@ struct TranscriptWindow: View {
     @AppStorage(filesKey) private var filePaths = ""
     @AppStorage(showsSummaryKey) private var showsSummary = false
     @State private var playbooks: [Playbook] = []
-    @State private var showingNotes = false
-    @State private var showingFiles = false
-    @State private var editingAlways = false
-    @State private var reviewing = false
     @Environment(\.openWindow) private var openWindow
     @State private var readingFiles = false
     /// Counts reads of the picks, so an older, slower read can't replace a newer one.
@@ -54,10 +52,10 @@ struct TranscriptWindow: View {
         VStack(spacing: 0) {
             VSplitView {
                 transcript
-                AnswersPane(session: session)
+                AnswersPane(session: session, askRequests: controls.askRequests)
             }
             Divider()
-            StatusBar(state: session.state, reviews: session.reviews) { reviewing = true }
+            StatusBar(state: session.state, reviews: session.reviews) { controls.reviewing = true }
         }
         .inspector(isPresented: $showsSummary) {
             SummaryPanel(session: session, canPopOut: true)
@@ -69,16 +67,17 @@ struct TranscriptWindow: View {
             session.answers.autoAnswer = autoAnswer
             reloadPlaybooks()
         }
-        .sheet(isPresented: $reviewing) {
+        .sheet(isPresented: $controls.reviewing) {
             ReviewSheet(inbox: session.reviews)
         }
-        .sheet(isPresented: $editingAlways) {
+        .sheet(isPresented: $controls.editingAlways) {
             AlwaysEditor(text: AlwaysInstructions().load()) { text in
                 try AlwaysInstructions().save(text)
                 session.answers.always = AlwaysInstructions().load()
             }
         }
         .task { await readFiles() }
+        .onChange(of: controls.startStopRequests) { startOrStop() }
         .onChange(of: autoAnswer) { session.answers.autoAnswer = autoAnswer }
         .onChange(of: playbookName) { applyPlaybook() }
         .onChange(of: filePaths) { Task { await readFiles() } }
@@ -132,17 +131,7 @@ struct TranscriptWindow: View {
 
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         ToolbarItemGroup {
-            Button {
-                Task {
-                    if isListening {
-                        await session.stop()
-                    } else {
-                        // Files may have changed since they were picked.
-                        await readFiles()
-                        await session.start()
-                    }
-                }
-            } label: {
+            Button(action: startOrStop) {
                 if isListening {
                     Label("Stop", systemImage: "stop.circle")
                 } else {
@@ -152,13 +141,13 @@ struct TranscriptWindow: View {
             .disabled(isBusy)
             .help(isListening ? "Stop transcribing the call" : "Start transcribing the call")
 
-            Button(action: copyTranscript) {
+            Button { Self.copyTranscript(of: session) } label: {
                 Label("Copy Transcript", systemImage: "doc.on.doc")
             }
             .disabled(session.store.utterances.isEmpty)
             .help("Copy the transcript as text")
 
-            Button(action: openSessionsFolder) {
+            Button(action: Self.openSessionsFolder) {
                 Label("Open Sessions Folder", systemImage: "folder")
             }
             .help("Open the Sessions folder, where each call's transcript is saved")
@@ -187,7 +176,7 @@ struct TranscriptWindow: View {
                 }
                 .pickerStyle(.inline)
                 Divider()
-                Button("Edit Always Instructions…") { editingAlways = true }
+                Button("Edit Always Instructions…") { controls.editingAlways = true }
             } label: {
                 Label(playbookName.isEmpty ? "No Playbook" : playbookName, systemImage: "list.bullet.rectangle")
             }
@@ -195,12 +184,12 @@ struct TranscriptWindow: View {
             .help("Choose the instructions Claude follows on this call")
 
             Button {
-                showingNotes.toggle()
+                controls.showingNotes.toggle()
             } label: {
                 Label("Call Notes", systemImage: "note.text")
             }
             .help("Write notes about this call for Claude")
-            .popover(isPresented: $showingNotes) {
+            .popover(isPresented: $controls.showingNotes) {
                 TextEditor(text: callNotes)
                     .accessibilityLabel("Call notes")
                     .frame(width: Self.notesSize.width, height: Self.notesSize.height)
@@ -208,12 +197,12 @@ struct TranscriptWindow: View {
             }
 
             Button {
-                showingFiles.toggle()
+                controls.showingFiles.toggle()
             } label: {
                 Label("Files", systemImage: picks.isEmpty ? "books.vertical" : "books.vertical.fill")
             }
             .help("Choose folders and files Claude can use on this call")
-            .popover(isPresented: $showingFiles) {
+            .popover(isPresented: $controls.showingFiles) {
                 FilesPopover(picks: picks, files: session.answers.files, isReading: readingFiles,
                              add: addFiles, remove: removePick)
             }
@@ -268,7 +257,7 @@ struct TranscriptWindow: View {
         guard panel.runModal() == .OK else { return }
         let paths = picks.map(\.path) + panel.urls.map(\.path).filter { !picks.map(\.path).contains($0) }
         filePaths = paths.joined(separator: "\n")
-        showingFiles = true
+        controls.showingFiles = true
     }
 
     private func removePick(_ pick: URL) {
@@ -304,12 +293,26 @@ struct TranscriptWindow: View {
         }
     }
 
-    private func copyTranscript() {
+    /// Starts the call (reading the files again first, since they may have
+    /// changed since they were picked), or stops it.
+    private func startOrStop() {
+        guard !isBusy else { return }
+        Task {
+            if isListening {
+                await session.stop()
+            } else {
+                await readFiles()
+                await session.start()
+            }
+        }
+    }
+
+    static func copyTranscript(of session: LiveSession) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(session.store.plainText(), forType: .string)
     }
 
-    private func openSessionsFolder() {
+    static func openSessionsFolder() {
         let folder = Paths.sessionsDirectory
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         NSWorkspace.shared.open(folder)

@@ -5,9 +5,12 @@ import SwiftUI
 /// buttons, and a field to type a question. Sits under the transcript.
 struct AnswersPane: View {
     let session: LiveSession
+    /// Counts the menu's Ask Claude…; each change puts the cursor in the field.
+    var askRequests = 0
 
     @State private var scrollPosition = ScrollPosition(idType: UUID.self)
     @State private var question = ""
+    @FocusState private var askFocused: Bool
     @AppStorage(QuickActionsBar.storageKey) private var storedQuickActions = ""
 
     var body: some View {
@@ -18,7 +21,9 @@ struct AnswersPane: View {
             }
             .padding([.horizontal, .top])
             TextField("Ask Claude…", text: $question)
+                .focused($askFocused)
                 .onSubmit(ask)
+                .onChange(of: askRequests) { askFocused = true }
                 .padding()
         }
     }
