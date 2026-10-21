@@ -26,12 +26,13 @@ project's code or your resume), and saves each call as a Markdown transcript.
   - Start/Stop, the live transcript with each side's text in progress, and a status bar.
   - Copy Transcript, Open Sessions Folder, and Keep on Top (it floats above the call app by default).
 - **Saved transcripts.** One Markdown file per call in `~/Library/Application Support/CallAssistant/Sessions/`, written line by line as the call goes. Claude's answers are saved in it too, as quotes.
-- **Answers from Claude** (`claude-sonnet-5-5`), shown under the transcript as they're written. There are three ways to ask:
+- **Answers from Claude** (`claude-sonnet-5-5`), shown under the transcript as they're written. There are four ways to ask:
   - **Auto-Answer** (the lightning-bolt button): when the other side asks something, Claude answers once they pause. It answers every question it spots, small talk included, so turn it off during chit-chat.
   - **Answer Now** (the sparkles button, or **⌃⌥A** from any app): Claude helps you respond to what they just said.
   - **Ask Claude…**: type a question under the answers and press Return. This works without a call too.
+  - **Quick-action buttons** above Ask Claude send a saved prompt in one click: **Shorter**, **Simpler**, **Example**, **Ask them** (a question to ask them now) and **Recap**. The slider button at the end of the row opens an editor to rename them, change their prompts, drag them into a new order, add your own or restore the starters.
 
-  A new Answer Now or typed question stops an answer that's still being written.
+  A new Answer Now, typed question or quick action stops an answer that's still being written.
 
   Every answer sees the whole call so far, including Claude's own earlier answers, so you can type "make that shorter" or "say it more casually". Your own latest words count straight away, even while they're still being checked for echo.
 - **Playbooks and call notes.** These are instructions Claude follows in every answer:
