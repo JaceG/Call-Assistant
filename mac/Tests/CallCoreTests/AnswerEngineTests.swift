@@ -93,7 +93,7 @@ struct AnswerEngineTests {
         engine.ask("Make that shorter", transcript: transcript)
         #expect(await Self.eventually { provider.prompts.count == 2 })
         let seen = provider.prompts[1].transcript.map(\.text).joined(separator: "\n")
-        #expect(seen.contains("Jace typed to Claude: What is a mutex?"))
+        #expect(seen.contains("Jace asked Claude: What is a mutex?"))
         #expect(seen.contains("Claude, to Jace only: Short answer."))
     }
 
@@ -106,6 +106,30 @@ struct AnswerEngineTests {
         engine.ask("Again?", transcript: transcript)
         #expect(await Self.eventually { provider.prompts.count == 2 })
         #expect(!provider.prompts[1].transcript.contains { $0.text.contains("Claude,") })
+    }
+
+    @Test func aQuickActionIsAskedLikeATypedQuestionAndLabelledQuick() async {
+        let provider = FakeProvider()
+        let engine = AnswerEngine(provider: provider)
+        let transcript = TranscriptStore()
+        engine.ask("What is a mutex?", transcript: transcript)
+        #expect(await Self.eventually { engine.answers.first?.state == .done })
+        engine.quickAction(QuickAction(name: "Shorter", prompt: "Make that shorter."), transcript: transcript)
+        #expect(await Self.eventually { engine.answers.count == 2 && engine.answers[1].state == .done })
+        #expect(engine.answers[1].trigger == .quick)
+        #expect(engine.answers[1].question == "Make that shorter.")
+        #expect(provider.prompts[1].question == "Make that shorter.")
+        #expect(provider.prompts[1].transcript.last?.text.contains("Claude, to Jace only: Short answer.") == true)
+    }
+
+    @Test func aQuickActionStopsAnAnswerStillStreaming() async {
+        let engine = AnswerEngine(provider: FakeProvider(Self.slowReply()))
+        let transcript = TranscriptStore()
+        engine.ask("Tell me about caching", transcript: transcript)
+        #expect(await Self.eventually { engine.answers.first?.state == .streaming })
+        engine.quickAction(QuickAction.starters[0], transcript: transcript)
+        #expect(engine.answers.first?.state == .stopped)
+        #expect(engine.answers.count == 2)
     }
 
     @Test func myLinesStillHeldForTheEchoCheckAreInThePrompt() async {

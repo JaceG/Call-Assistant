@@ -153,7 +153,8 @@ public struct PromptBuilder: Sendable {
     }
 
     /// A line as "[time] Speaker: text"; an answer as "[time] Claude, to Jace
-    /// only: text" on one line, after the question when Jace typed it.
+    /// only: text" on one line, after the question when Jace asked it himself
+    /// (typed, or with a quick-action button).
     private func render(_ entry: TranscriptEntry) -> String {
         switch entry {
         case .line(let line):
@@ -162,7 +163,8 @@ public struct PromptBuilder: Sendable {
             let time = "[\(answer.askedAt.clockTime(in: timeZone))]"
             let text = answer.text.split(whereSeparator: \.isNewline).joined(separator: " ")
             let reply = "\(time) Claude, to Jace only: \(text)\(answer.state == .stopped ? " (cut off)" : "")"
-            return answer.trigger == .typed ? "\(time) Jace typed to Claude: \(answer.question)\n\(reply)" : reply
+            let asked = answer.trigger == .typed || answer.trigger == .quick
+            return asked ? "\(time) Jace asked Claude: \(answer.question)\n\(reply)" : reply
         }
     }
 

@@ -11,6 +11,8 @@ public struct Answer: Identifiable, Sendable, Equatable {
         case answerNow
         /// A question Jace typed.
         case typed
+        /// A quick-action button, such as Shorter.
+        case quick
 
         /// Its name, the same in the window and the call file.
         public var label: String {
@@ -18,6 +20,7 @@ public struct Answer: Identifiable, Sendable, Equatable {
             case .auto: "Auto"
             case .answerNow: "Answer Now"
             case .typed: "Typed"
+            case .quick: "Quick"
             }
         }
     }
@@ -136,6 +139,14 @@ public final class AnswerEngine {
         guard !question.isEmpty else { return }
         self.transcript = transcript
         startNow(.typed(question), shown: question, trigger: .typed)
+    }
+
+    /// Sends a quick action's prompt, now, as if Jace had typed it.
+    public func quickAction(_ action: QuickAction, transcript: TranscriptStore) {
+        let prompt = action.prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        self.transcript = transcript
+        startNow(.typed(prompt), shown: prompt, trigger: .quick)
     }
 
     /// Stops the answer that's streaming, keeping its text.

@@ -178,7 +178,7 @@ struct PromptBuilderTests {
         ]
         let text = Self.builder().prompt(entries: entries, themSaying: nil, question: .typed("Shorter")).transcript[0].text
         #expect(text.hasSuffix("""
-            [14:13:20] Jace typed to Claude: What is a mutex?
+            [14:13:20] Jace asked Claude: What is a mutex?
             [14:13:20] Claude, to Jace only: A lock.
             [14:13:25] Claude, to Jace only: I'd start by (cut off)
             """))
