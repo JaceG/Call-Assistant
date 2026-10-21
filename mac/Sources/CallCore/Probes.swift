@@ -61,6 +61,12 @@ public enum Probes {
                 return 64
             }
             return await followUp(Array(questions))
+        case "--probe-summary":
+            guard let value, let text = try? String(contentsOf: URL(fileURLWithPath: value), encoding: .utf8) else {
+                print("Usage: --probe-summary <call.md>")
+                return 64
+            }
+            return await summary(of: text)
         case "--probe-files":
             let picks = arguments.drop { $0 != flag }.dropFirst().prefix { !$0.hasPrefix("--") }
             guard !picks.isEmpty else {
@@ -489,3 +495,30 @@ extension Probes {
         return engine.answers.allSatisfy { $0.state == .done } ? 0 : 1
     }
 }
+
+extension Probes {
+    /// Summarizes the first 60% of a saved call, then the whole call building
+    /// on that, as the live summary would a minute apart. Prints the times
+    /// and both versions.
+    @MainActor
+    static func summary(of text: String) async -> Int32 {
+        let key: String
+        do {
+            key = try APIKeyStore.read()
+        } catch {
+            print("RESULT no key: \(error.localizedDescription)")
+            return 2
+        }
+        let lines = transcriptLines(in: text)
+        let engine = SummaryEngine(provider: ClaudeProvider(apiKey: { key }))
+        for part in [Array(lines.prefix(lines.count * 6 / 10)), lines] {
+            let started = ContinuousClock.now
+            await engine.update(lines: part)
+            print("=== \(part.count) of \(lines.count) lines, \(ContinuousClock.now - started)")
+            if let failure = engine.failure { print("FAILED: \(failure)"); return 1 }
+            print(engine.shown?.summary.markdown(updatedAt: Date()) ?? "(none)")
+        }
+        return 0
+    }
+}
+

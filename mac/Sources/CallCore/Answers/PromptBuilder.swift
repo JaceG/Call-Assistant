@@ -82,6 +82,12 @@ public struct PromptBuilder: Sendable {
                      lookup: !files.isEmpty && files.mode == .lookUp ? FileLookup(files: files) : nil)
     }
 
+    /// The transcript blocks alone, chunked and cached the same way, for
+    /// other requests about the call (the live summary).
+    public func transcript(of lines: [Utterance]) -> [PromptBlock] {
+        transcript(lines.map(TranscriptEntry.line), pendingMine: [], themSaying: nil)
+    }
+
     /// A prompt from lines alone, with no earlier answers.
     public func prompt(lines: [Utterance], themSaying: String?, question: Question) -> AnswerPrompt {
         prompt(entries: lines.map(TranscriptEntry.line), themSaying: themSaying, question: question)

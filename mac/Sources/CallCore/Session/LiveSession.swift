@@ -21,6 +21,8 @@ public final class LiveSession {
     public let store = TranscriptStore()
     /// Claude's answers for this call.
     public let answers: AnswerEngine
+    /// The call's running summary, saved beside the transcript.
+    public let summary: SummaryEngine
     /// The current (or last) call's transcript file.
     public private(set) var sessionFile: URL?
     /// WebRTC's echo canceller: removes the speakers' sound from the mic, using
@@ -47,11 +49,15 @@ public final class LiveSession {
     private var heldMine: [(utterance: Utterance, heldAt: Date)] = []
     private var releaser: Task<Void, Never>?
 
-    public init(sessionsDirectory: URL = Paths.sessionsDirectory, provider: AnswerProvider = ClaudeProvider()) {
+    public init(sessionsDirectory: URL = Paths.sessionsDirectory, provider: AnswerProvider = ClaudeProvider(),
+                summarizer: StructuredProvider = ClaudeProvider()) {
         self.sessionsDirectory = sessionsDirectory
         answers = AnswerEngine(provider: provider)
+        summary = SummaryEngine(provider: summarizer)
         answers.onFinished = { [weak self] answer in self?.save(answer) }
         answers.pendingMine = { [weak self] in self?.pendingMine() ?? [] }
+        summary.callNotes = { [weak self] in self?.answers.callNotes ?? "" }
+        summary.onUpdate = { [weak self] summary, at in self?.saveSummary(summary, at: at) }
     }
 
     /// The stand-in question a warm request carries; it's read, never answered.
@@ -152,6 +158,7 @@ public final class LiveSession {
         state = .listening
         // Caches the files now rather than on the first question.
         Task { await answers.warm() }
+        summary.start { [weak self] in self?.store.utterances ?? [] }
         Log.session.info("listening; transcript at \(self.sessionFile?.path ?? "-", privacy: .public)")
     }
 
@@ -181,6 +188,26 @@ public final class LiveSession {
         writer?.close()
         writer = nil
         state = .idle
+        // A last summary covering the end of the call, after Stop returns.
+        Task { await summary.finish() }
+    }
+
+    /// The summary file beside the call's transcript: "<day> <time> summary.md".
+    public var summaryFile: URL? {
+        sessionFile.map { file in
+            let name = file.deletingPathExtension().lastPathComponent
+            let base = name.hasSuffix(" call") ? String(name.dropLast(" call".count)) : name
+            return file.deletingLastPathComponent().appendingPathComponent("\(base) summary.md")
+        }
+    }
+
+    private func saveSummary(_ summary: CallSummary, at time: Date) {
+        guard let file = summaryFile else { return }
+        do {
+            try Data(summary.markdown(updatedAt: time).utf8).write(to: file, options: .atomic)
+        } catch {
+            Log.session.error("couldn't save the summary: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     /// Passes the system audio to the canceller as the reference (and on, as
