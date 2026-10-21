@@ -68,7 +68,7 @@ struct AnswersPane: View {
 
 /// One answer: when and how it was asked, the question, then the answer as
 /// it streams in, or how it ended.
-private struct AnswerView: View {
+struct AnswerView: View {
     let answer: Answer
 
     var body: some View {

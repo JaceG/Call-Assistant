@@ -104,7 +104,7 @@ struct SummaryPanel: View {
 
 /// The summary's sections in reading order; empty ones are left out. Items
 /// new or changed since the previous version are highlighted until the next.
-private struct SummaryDocument: View {
+struct SummaryDocument: View {
     let summary: CallSummary
     let previous: CallSummary?
 

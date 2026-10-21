@@ -31,6 +31,7 @@ struct TranscriptWindow: View {
     @State private var showingFiles = false
     @State private var editingAlways = false
     @State private var reviewing = false
+    @Environment(\.openWindow) private var openWindow
     @State private var readingFiles = false
     /// Counts reads of the picks, so an older, slower read can't replace a newer one.
     @State private var filesRead = 0
@@ -161,6 +162,13 @@ struct TranscriptWindow: View {
                 Label("Open Sessions Folder", systemImage: "folder")
             }
             .help("Open the Sessions folder, where each call's transcript is saved")
+
+            Button {
+                openWindow(id: PastCallsWindow.windowID)
+            } label: {
+                Label("Past Calls", systemImage: "clock.arrow.circlepath")
+            }
+            .help("Open earlier calls' transcripts and summaries")
 
             Toggle(isOn: $keepOnTop) {
                 Label("Keep on Top", systemImage: keepOnTop ? "pin.fill" : "pin")
@@ -310,7 +318,7 @@ struct TranscriptWindow: View {
 
 /// One line of the transcript: time, who spoke, what they said. Text still
 /// being recognized has no time yet and shows in grey italics.
-private struct TranscriptLine: View {
+struct TranscriptLine: View {
     let time: Date?
     let speaker: Speaker
     let text: String

@@ -41,5 +41,10 @@ struct CallAssistantApp: App {
         }
         .windowLevel(keepOnTop ? .floating : .normal)
         .defaultLaunchBehavior(.suppressed)
+
+        Window("Past Calls", id: PastCallsWindow.windowID) {
+            PastCallsWindow(session: session)
+        }
+        .defaultLaunchBehavior(.suppressed)
     }
 }
